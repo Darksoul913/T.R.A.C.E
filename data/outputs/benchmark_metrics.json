@@ -1,0 +1,19 @@
+{
+  "evaluation_samples_count": 3,
+  "changeintel_ai_engine": {
+    "precision": 0.8719,
+    "recall": 0.8649,
+    "f1_score": 0.8638,
+    "iou": 0.7612,
+    "false_alarm_rate": 0.0359
+  },
+  "naive_spectral_baseline": {
+    "precision": 0.2116,
+    "recall": 0.4505,
+    "f1_score": 0.2864,
+    "iou": 0.1676,
+    "false_alarm_rate": 0.4289
+  },
+  "false_alarm_reduction_percentage": 91.6,
+  "f1_improvement_percentage": 201.6
+}
