@@ -48,11 +48,12 @@ data/raw/
 *.zip
 *.7z
 
-# Model Checkpoints & Large Binaries (>50MB)
-checkpoints/*.pt
+# Model Checkpoints & Large Binaries
 checkpoints/*.pth
 checkpoints/*.onnx
 checkpoints/*.bin
+!checkpoints/BIT_LEVIR_best.pt
+!checkpoints/s2_track_b.pt
 !checkpoints/.gitkeep
 
 # IDE & Editor Configurations
