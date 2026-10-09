@@ -16,6 +16,13 @@ import geopandas as gpd
 class SitRepPDF(FPDF):
     """Custom PDF styled for Emergency Operations Centers."""
 
+    _ASCII = str.maketrans({"\u2013": "-", "\u2014": "-", "\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"', "\u2026": "..."})
+
+    def normalize_text(self, text):
+        # Core fonts are Latin-1 only; scene labels and OSM place names may not be.
+        # ponytail: non-Latin text (e.g. Devanagari) becomes "?"; embed a Unicode TTF if the PDF must show it.
+        return super().normalize_text(text.translate(self._ASCII).encode("latin-1", "replace").decode("latin-1"))
+
     def header(self):
         # Header banner
         self.set_fill_color(24, 43, 73)  # Dark navy blue
@@ -82,7 +89,7 @@ class SitRepGenerator:
         total_area = float(gdf["area_sqm"].sum()) if not gdf.empty else 0.0
         critical_count = int((gdf["severity_tier"] == "Critical").sum()) if not gdf.empty else 0
         high_count = int((gdf["severity_tier"] == "High").sum()) if not gdf.empty else 0
-        moderate_count = int((gdf["severity_tier"] == "Moderate").sum()) if not gdf.empty else 0
+        moderate_count = int((gdf["severity_tier"] == "Medium").sum()) if not gdf.empty else 0
         total_count = len(gdf)
 
         # Draw 4 KPI summary cards

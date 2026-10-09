@@ -1,0 +1,214 @@
+{
+  "dataset": "LEVIR-CD official test split",
+  "samples": 128,
+  "perturbation": "applied to T2 only; ground truth unchanged",
+  "conditions": [
+    {
+      "name": "Clean",
+      "ai_raw": {
+        "precision": 0.8978,
+        "recall": 0.8928,
+        "f1_score": 0.8953,
+        "iou": 0.8104,
+        "false_alarm_rate": 0.0055
+      },
+      "ai_hist_matched": {
+        "precision": 0.8781,
+        "recall": 0.8113,
+        "f1_score": 0.8434,
+        "iou": 0.7292,
+        "false_alarm_rate": 0.006
+      },
+      "ai_stable": {
+        "precision": 0.8906,
+        "recall": 0.7942,
+        "f1_score": 0.8396,
+        "iou": 0.7236,
+        "false_alarm_rate": 0.0052
+      },
+      "naive": {
+        "precision": 0.0636,
+        "recall": 0.3038,
+        "f1_score": 0.1052,
+        "iou": 0.0555,
+        "false_alarm_rate": 0.24
+      }
+    },
+    {
+      "name": "Brightness -30%",
+      "ai_raw": {
+        "precision": 0.899,
+        "recall": 0.8537,
+        "f1_score": 0.8758,
+        "iou": 0.779,
+        "false_alarm_rate": 0.0051
+      },
+      "ai_hist_matched": {
+        "precision": 0.8778,
+        "recall": 0.8107,
+        "f1_score": 0.8429,
+        "iou": 0.7285,
+        "false_alarm_rate": 0.0061
+      },
+      "ai_stable": {
+        "precision": 0.8934,
+        "recall": 0.5279,
+        "f1_score": 0.6636,
+        "iou": 0.4966,
+        "false_alarm_rate": 0.0034
+      },
+      "naive": {
+        "precision": 0.0501,
+        "recall": 0.3323,
+        "f1_score": 0.0871,
+        "iou": 0.0455,
+        "false_alarm_rate": 0.3382
+      }
+    },
+    {
+      "name": "Brightness -15%",
+      "ai_raw": {
+        "precision": 0.8998,
+        "recall": 0.8808,
+        "f1_score": 0.8902,
+        "iou": 0.8022,
+        "false_alarm_rate": 0.0053
+      },
+      "ai_hist_matched": {
+        "precision": 0.878,
+        "recall": 0.8109,
+        "f1_score": 0.8431,
+        "iou": 0.7288,
+        "false_alarm_rate": 0.006
+      },
+      "ai_stable": {
+        "precision": 0.8931,
+        "recall": 0.6794,
+        "f1_score": 0.7718,
+        "iou": 0.6284,
+        "false_alarm_rate": 0.0044
+      },
+      "naive": {
+        "precision": 0.0564,
+        "recall": 0.3117,
+        "f1_score": 0.0955,
+        "iou": 0.0502,
+        "false_alarm_rate": 0.2798
+      }
+    },
+    {
+      "name": "Brightness +15%",
+      "ai_raw": {
+        "precision": 0.8952,
+        "recall": 0.8987,
+        "f1_score": 0.8969,
+        "iou": 0.8131,
+        "false_alarm_rate": 0.0056
+      },
+      "ai_hist_matched": {
+        "precision": 0.8772,
+        "recall": 0.8232,
+        "f1_score": 0.8493,
+        "iou": 0.7381,
+        "false_alarm_rate": 0.0062
+      },
+      "ai_stable": {
+        "precision": 0.8855,
+        "recall": 0.8341,
+        "f1_score": 0.859,
+        "iou": 0.7529,
+        "false_alarm_rate": 0.0058
+      },
+      "naive": {
+        "precision": 0.0676,
+        "recall": 0.3023,
+        "f1_score": 0.1104,
+        "iou": 0.0584,
+        "false_alarm_rate": 0.224
+      }
+    },
+    {
+      "name": "Brightness +30%",
+      "ai_raw": {
+        "precision": 0.8918,
+        "recall": 0.901,
+        "f1_score": 0.8964,
+        "iou": 0.8123,
+        "false_alarm_rate": 0.0059
+      },
+      "ai_hist_matched": {
+        "precision": 0.8753,
+        "recall": 0.8389,
+        "f1_score": 0.8567,
+        "iou": 0.7493,
+        "false_alarm_rate": 0.0064
+      },
+      "ai_stable": {
+        "precision": 0.8828,
+        "recall": 0.8409,
+        "f1_score": 0.8613,
+        "iou": 0.7564,
+        "false_alarm_rate": 0.006
+      },
+      "naive": {
+        "precision": 0.0698,
+        "recall": 0.3088,
+        "f1_score": 0.1138,
+        "iou": 0.0603,
+        "false_alarm_rate": 0.221
+      }
+    },
+    {
+      "name": "Cast shadows",
+      "ai_raw": {
+        "precision": 0.8969,
+        "recall": 0.8364,
+        "f1_score": 0.8656,
+        "iou": 0.763,
+        "false_alarm_rate": 0.0052
+      },
+      "ai_hist_matched": {
+        "precision": 0.8761,
+        "recall": 0.7669,
+        "f1_score": 0.8179,
+        "iou": 0.6919,
+        "false_alarm_rate": 0.0058
+      },
+      "ai_stable": {
+        "precision": 0.8931,
+        "recall": 0.6722,
+        "f1_score": 0.767,
+        "iou": 0.6221,
+        "false_alarm_rate": 0.0043
+      },
+      "naive": {
+        "precision": 0.0587,
+        "recall": 0.3308,
+        "f1_score": 0.0997,
+        "iou": 0.0525,
+        "false_alarm_rate": 0.2847
+      }
+    }
+  ],
+  "misregistration": {
+    "shift_px": [
+      2,
+      1
+    ],
+    "ai_raw": {
+      "precision": 0.8972,
+      "recall": 0.8921,
+      "f1_score": 0.8947,
+      "iou": 0.8094,
+      "false_alarm_rate": 0.0055
+    },
+    "ai_registered": {
+      "precision": 0.8975,
+      "recall": 0.8926,
+      "f1_score": 0.895,
+      "iou": 0.81,
+      "false_alarm_rate": 0.0055
+    },
+    "corrected_pairs": 54
+  }
+}

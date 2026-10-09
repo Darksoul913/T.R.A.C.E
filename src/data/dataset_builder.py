@@ -23,82 +23,88 @@ class DatasetBuilder:
         self.output_dir = os.path.join(base_dir, "data", "geotiff")
         os.makedirs(self.output_dir, exist_ok=True)
 
+    @staticmethod
+    def load_oscd_city(city: str, base_dir: str = ".", oscd_root: str = "Onera Satellite Change Detection") -> Dict[str, Any]:
+        """One OSCD city as arrays on its 10 m grid (imgs_*_rect):
+        disp1/disp2 : uint8 B04 B03 B02 B08, percentile-stretched per date (model input / display)
+        refl1/refl2 : uint16 reflectance x10000, B04 B03 B02 B08 B11 B12 (spectral indices)
+        gt          : uint8 change mask, or None for cities without released labels
+        cloud       : bool cloud / cirrus / shadow mask from either date
+        """
+        img_dir = os.path.join(base_dir, oscd_root, "images", "Onera Satellite Change Detection dataset - Images", city)
+        label_dir = os.path.join(base_dir, oscd_root, "train_labels",
+                                 "Onera Satellite Change Detection dataset - Train Labels", city, "cm")
+
+        with open(os.path.join(img_dir, f"{city}.geojson"), "r") as f:
+            coords = json.load(f)["features"][0]["geometry"]["coordinates"][0]
+        lons, lats = [c[0] for c in coords], [c[1] for c in coords]
+
+        def read(sub_dir: str, bands) -> np.ndarray:
+            out = []
+            for b in bands:
+                with rasterio.open(os.path.join(img_dir, sub_dir, f"{b}.tif")) as src:
+                    out.append(src.read(1))
+            return np.stack(out, axis=0)
+
+        band_names = ["B04", "B03", "B02", "B08"]
+        refl1 = read("imgs_1_rect", band_names + ["B11", "B12"]).astype(np.uint16)
+        refl2 = read("imgs_2_rect", band_names + ["B11", "B12"]).astype(np.uint16)
+        _, h, w = refl1.shape
+        transform = from_bounds(min(lons), min(lats), max(lons), max(lats), w, h)
+
+        # Ground truth: OSCD's README says the .tif is 0/1, but the shipped files are 1 = no change,
+        # 2 = change. The .png is 0/255 (possibly RGBA). Either way, change is the top value.
+        gt = None
+        cm_path = os.path.join(label_dir, f"{city}-cm.tif")
+        if os.path.exists(cm_path):
+            with rasterio.open(cm_path) as s:
+                gt_arr = s.read(1)
+        elif os.path.exists(os.path.join(label_dir, "cm.png")):
+            gt_arr = np.array(Image.open(os.path.join(label_dir, "cm.png")))
+        else:
+            gt_arr = None
+        if gt_arr is not None:
+            gt_arr = gt_arr[..., 0] if gt_arr.ndim == 3 else gt_arr
+            gt = (gt_arr == gt_arr.max()).astype(np.uint8) if gt_arr.min() < gt_arr.max() else np.zeros_like(gt_arr, np.uint8)
+
+        # Feature #5: cloud / shadow mask from either date (L1C has no SCL, so spectral tests)
+        cloud = np.zeros((h, w), bool)
+        for sub in ("imgs_1_rect", "imgs_2_rect"):
+            cloud |= GeoTIFFProcessor.cloud_mask(*(read(sub, [b])[0].astype(np.float32) / 10000.0
+                                                   for b in ("B02", "B03", "B04", "B08", "B11", "B10")))
+        stretch = lambda r: (GeoTIFFProcessor.percentile_stretch(r[:4]) * 255).astype(np.uint8)
+        return {"disp1": stretch(refl1), "disp2": stretch(refl2), "refl1": refl1, "refl2": refl2, "gt": gt,
+                "cloud": cloud, "transform": transform, "crs": CRS.from_epsg(4326),
+                "bounds": [min(lons), min(lats), max(lons), max(lats)]}
+
     def prepare_oscd_city(
         self,
         city: str = "mumbai",
         oscd_root: str = "Onera Satellite Change Detection"
     ) -> Dict[str, str]:
-        """
-        Processes an OSCD city (default: Mumbai) into standardized multi-band GeoTIFFs.
-        Extracts B02 (Blue), B03 (Green), B04 (Red), B08 (NIR) for both T1 and T2.
-        Embeds authentic bounding box from geojson into the GeoTIFF transform.
-        """
-        img_dir = os.path.join(
-            self.base_dir, oscd_root, "images",
-            "Onera Satellite Change Detection dataset - Images", city
-        )
-        label_dir = os.path.join(
-            self.base_dir, oscd_root, "train_labels",
-            "Onera Satellite Change Detection dataset - Train Labels", city, "cm"
-        )
-
-        geojson_path = os.path.join(img_dir, f"{city}.geojson")
-        with open(geojson_path, "r") as f:
-            gj = json.load(f)
-
-        coords = gj["features"][0]["geometry"]["coordinates"][0]
-        lons = [c[0] for c in coords]
-        lats = [c[1] for c in coords]
-        min_lon, max_lon = min(lons), max(lons)
-        min_lat, max_lat = min(lats), max(lats)
-
-        # Bands to stack: Red (B04), Green (B03), Blue (B02), NIR (B08)
-        band_names = ["B04", "B03", "B02", "B08"]
-
-        def read_stack(sub_dir: str) -> np.ndarray:
-            band_arrays = []
-            for b in band_names:
-                b_path = os.path.join(img_dir, sub_dir, f"{b}.tif")
-                with rasterio.open(b_path) as src:
-                    band_arrays.append(src.read(1))
-            return np.stack(band_arrays, axis=0)
-
-        t1_raw = read_stack("imgs_1_rect")
-        t2_raw = read_stack("imgs_2_rect")
-
-        c, h, w = t1_raw.shape
-        transform = from_bounds(min_lon, min_lat, max_lon, max_lat, w, h)
-        crs = CRS.from_epsg(4326)
-
-        # Contrast stretch to 8-bit [0, 255] for visual and neural inference
-        t1_stretched = (GeoTIFFProcessor.percentile_stretch(t1_raw) * 255).astype(np.uint8)
-        t2_stretched = (GeoTIFFProcessor.percentile_stretch(t2_raw) * 255).astype(np.uint8)
-
-        # Read ground truth mask
-        cm_path = os.path.join(label_dir, f"{city}-cm.tif")
-        if not os.path.exists(cm_path):
-            cm_path = os.path.join(label_dir, "cm.png")
-            gt_arr = np.array(Image.open(cm_path))
-        else:
-            with rasterio.open(cm_path) as s:
-                gt_arr = s.read(1)
-        
-        # Ground truth: 1 for change, 0 for background
-        gt_binary = (gt_arr > 0).astype(np.uint8)
-
-        # Write output GeoTIFFs
+        """Writes an OSCD city (default: Mumbai) as standardized GeoTIFFs: display pair (B04 B03 B02 B08),
+        reflectance pair (+ B11 B12), ground truth and cloud mask, georeferenced from the city geojson."""
+        d = self.load_oscd_city(city, self.base_dir, oscd_root)
+        transform, crs, cloud = d["transform"], d["crs"], d["cloud"]
+        _, h, w = d["refl1"].shape
         t1_out = os.path.join(self.output_dir, f"{city}_t1_pre.tif")
         t2_out = os.path.join(self.output_dir, f"{city}_t2_post.tif")
         gt_out = os.path.join(self.output_dir, f"{city}_ground_truth.tif")
-
-        GeoTIFFProcessor.write_geotiff(t1_out, t1_stretched, transform, crs)
-        GeoTIFFProcessor.write_geotiff(t2_out, t2_stretched, transform, crs)
-        GeoTIFFProcessor.write_geotiff(gt_out, gt_binary, transform, crs)
+        cloud_out = os.path.join(self.output_dir, f"{city}_cloud_mask.tif")
+        GeoTIFFProcessor.write_geotiff(t1_out, d["disp1"], transform, crs)
+        GeoTIFFProcessor.write_geotiff(t2_out, d["disp2"], transform, crs)
+        if d["gt"] is not None:
+            GeoTIFFProcessor.write_geotiff(gt_out, d["gt"], transform, crs)
+        for tag in ("1", "2"):
+            GeoTIFFProcessor.write_geotiff(os.path.join(self.output_dir, f"{city}_t{tag}_reflectance.tif"), d[f"refl{tag}"], transform, crs)
+        GeoTIFFProcessor.write_geotiff(cloud_out, cloud.astype(np.uint8), transform, crs)
+        min_lon, min_lat, max_lon, max_lat = d["bounds"]
 
         print(f"[DatasetBuilder] Successfully generated GeoTIFF pair for OSCD {city.upper()}:")
         print(f"  T1 (Pre): {t1_out} ({w}x{h}, 4 bands: RGB+NIR)")
         print(f"  T2 (Post): {t2_out} ({w}x{h}, 4 bands: RGB+NIR)")
         print(f"  GT Mask: {gt_out}")
+        print(f"  Cloud/shadow mask: {cloud_out} ({cloud.mean():.2%} masked)")
 
         return {
             "city": city,

@@ -16,11 +16,15 @@ def b64(rel):
 
 # web/scenes.json is produced by scripts/build_scenes.py (runs the real pipeline)
 scenes = json.loads((ROOT / 'web/scenes.json').read_text())
+severity = scenes.pop('_severity', None)   # type weights + priorities, to explain scores in the inspector
 OUT = 'data/outputs/'
 
 DATA = {
     'scenes': scenes,
+    'severity': severity,
     'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text()),
+    # src/models/stress_test.py; the chart is omitted when it hasn't been run
+    'stress': json.loads((ROOT / OUT / 'stress_test.json').read_text()) if (ROOT / OUT / 'stress_test.json').exists() else None,
     # NASA Blue Marble (public domain), equirectangular 2048x1024
     'earth': 'data:image/jpeg;base64,' + b64('web/assets/earth_equirect.jpg'),
     'files': {k: {'geojson': (ROOT / OUT / sc['files']['geojson']).read_text(),
@@ -45,7 +49,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   --ink:#1E2620; --ink-2:#3B453C; --muted:#69705F; --faint:#9AA08F;
   --line:rgba(30,38,32,.11); --line-2:rgba(30,38,32,.2);
   --forest:#2F4A35; --forest-h:#253C2B; --moss:#5E7A3E; --ocean:#2D6A78; --clay:#B4612F; --sky:#DCE7E3;
-  --crit:#A3382B; --high:#C46A2A; --mod:#B08A1E; --minor:#3A7C88; --fa:#7A4E7A;
+  --crit:#A3382B; --high:#C46A2A; --mod:#B08A1E; --minor:#3A7C88; --fa:#7A4E7A; --unobs:#5F6670; --unobs-bg:rgba(214,217,220,.6);
   --btn-ink:#F6F1E7;
   --glass-fill:rgba(251,248,242,.72); --glass-line:rgba(30,38,32,.14);
   --dx: 8.5; --dy: -40;
@@ -267,6 +271,10 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .left{grid-area:left} .right{grid-area:right}
 .center{grid-area:center;display:flex;flex-direction:column;gap:12px;min-height:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card-h h3{margin:0}
+.city-pick{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card-2);border-radius:99px;padding:7px 12px;color:var(--ink);max-width:180px}
+.city-pick.on{background:var(--card);box-shadow:0 1px 3px rgba(30,38,32,.14)}
+.seg-sm button{padding:4px 9px;font-size:10.5px;letter-spacing:0;text-transform:none}
 .card h3,.card-h{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
   display:flex;align-items:center;justify-content:space-between;gap:8px}
 .card-h .mono{letter-spacing:0;text-transform:none;font-weight:500}
@@ -320,8 +328,15 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 #vec{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .poly{fill:var(--c);fill-opacity:var(--fill,.35);stroke:var(--c);stroke-width:1.6;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:pointer;transition:fill-opacity .15s}
 .poly:hover,.poly.hl{fill-opacity:calc(var(--fill,.35) + .25)}
+.poly.creep{stroke-dasharray:2 3;stroke-width:2.2;fill-opacity:calc(var(--fill,.35) * .6)}
+.lg-row .sw.dot{border-style:dotted;border-width:2px}
+.spark{display:block;width:100%;height:28px;overflow:visible}
+.spark polyline{fill:none;stroke:var(--clay);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.spark-l{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--muted);margin-top:2px}
 .poly.sel{stroke-width:3;fill-opacity:calc(var(--fill,.35) + .2)}
 .halo{fill:none;stroke:#fff;stroke-width:7;stroke-opacity:.9;vector-effect:non-scaling-stroke;pointer-events:none}
+.unobs{fill:url(#hatch);stroke:var(--unobs);stroke-width:1.2;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
+.lg-row .sw.hatch{background:repeating-linear-gradient(45deg, var(--unobs) 0 1.5px, var(--unobs-bg) 1.5px 4px);border-color:var(--unobs)}
 .fa{fill:var(--fa);fill-opacity:.32;stroke:var(--fa);stroke-width:1.8;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
 .pin{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2.5px solid var(--c);
   background:color-mix(in srgb, var(--c) 30%, #fff);box-shadow:0 0 0 2px rgba(255,255,255,.85),0 2px 6px rgba(0,0,0,.3);
@@ -394,26 +409,63 @@ dd.mono{font-weight:500}
 .abtn.primary:hover{background:var(--forest-h)}
 .abtn.good:hover{border-color:var(--moss);color:var(--moss)}
 .abtn.bad:hover{border-color:var(--crit);color:var(--crit)}
-.vstate{font-size:12px;color:var(--muted);margin:0}
-.vstate b{color:var(--ink)}
+.case-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.role{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.role select,.filters select{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:5px 8px;color:var(--ink)}
+.trail{list-style:none;margin:10px 0 8px;padding:0;font-size:11.5px;color:var(--ink-2);display:grid;gap:4px;max-height:96px;overflow:auto}
+.trail li{display:flex;gap:6px}.trail time{font-family:var(--mono);color:var(--faint);flex:none}
+.trail .empty{color:var(--muted)}
+#cMoves .abtn{white-space:normal}
+#cMoves .hint{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin:0}
+.case-foot{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:10.5px;color:var(--faint)}
+.lnk{border:0;background:none;padding:0;font:inherit;font-size:11px;color:var(--ocean);cursor:pointer;text-decoration:underline}
+.filters{display:grid;grid-template-columns:1.4fr 1fr;gap:6px}
+.filters select{min-width:0;width:100%}
+.tcard table{table-layout:fixed}
+.tcard th:first-child{width:38%}.tcard th:last-child{width:24%}
+.tcard td{overflow:hidden;text-overflow:ellipsis}
+.filters .search{margin-bottom:8px}
+.st{display:inline-block;margin-left:6px;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--card-2);color:var(--muted);vertical-align:1px}
+.st.ok{background:color-mix(in srgb, var(--moss) 18%, transparent);color:var(--forest)}
+.st.no{background:color-mix(in srgb, var(--crit) 14%, transparent);color:var(--crit)}
+.poly.dismissed{opacity:.28}
 .adv{background:linear-gradient(0deg, color-mix(in srgb, var(--clay) 7%, var(--card)), var(--card))}
 .adv p{margin:0;font-size:13px;line-height:1.6;color:var(--ink-2)}
+.lookup{display:flex;gap:6px;margin-top:12px}
+.lookup[hidden]{display:none}
+.lookup .search{margin:0}
+.lookup .abtn{flex:none}
+.lk-out{margin-top:8px;padding:9px 11px;border-radius:9px;border-left:3px solid var(--c, var(--line));background:var(--card-2);font-size:12.5px;line-height:1.55}
 .exports{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .exports .abtn{justify-content:flex-start}
 .exports .abtn small{margin-left:auto;font-family:var(--mono);font-weight:500;color:var(--faint);font-size:10.5px}
 
 /* modal + toast */
 dialog{border:0;padding:0;border-radius:18px;background:var(--card);color:var(--ink);width:min(680px, calc(100vw - 32px));
-  box-shadow:0 40px 100px rgba(30,38,32,.35)}
+  max-height:calc(100dvh - 32px);overflow:auto;box-shadow:0 40px 100px rgba(30,38,32,.35)}
 dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
 .dlg{padding:22px 24px 24px}
 .dlg h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em}
 .dlg p{font-size:13px;line-height:1.55;color:var(--ink-2)}
 .dlg table{font-size:13px;margin:6px 0 14px}
-.dlg th{background:none;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.dlg th{position:static;background:none;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
 .dlg td{padding:9px 6px}
 .dlg .win{color:var(--forest);font-weight:700}
 .dlg .lose{color:var(--crit)}
+.stress-h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:20px}
+.stress-h h3{margin:0;font-size:14px;font-weight:700}
+.sleg{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:10px 0 6px}
+.sleg i,.sbar i{display:inline-block;background:var(--c)}
+.sleg i{width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.srow{display:grid;grid-template-columns:118px 1fr;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line);font-size:12px}
+.srow b{font-weight:600}
+.sbars{display:grid;gap:3px}
+.sbar{display:grid;grid-template-columns:1fr 52px;gap:6px;align-items:center}
+.sbar span{height:8px;background:var(--card-2);border-radius:4px;overflow:hidden}
+.sbar i{height:100%;border-radius:4px}
+.sbar em{font-style:normal;font-family:var(--mono);font-size:11px;text-align:right;color:var(--ink-2)}
+@media (max-width:520px){.srow{grid-template-columns:1fr}}
+.fine{font-size:11.5px;color:var(--muted);margin:14px 0 0}
 .dlg-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .note{background:color-mix(in srgb, var(--moss) 10%, var(--card));border:1px solid color-mix(in srgb, var(--moss) 30%, transparent);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.55}
 .toast{position:fixed;left:50%;bottom:22px;z-index:20;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--card);
@@ -500,6 +552,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
     <span class="tb-sep"></span>
     <div class="tb-title"><div id="tbTitle"></div><div id="tbCoords"></div></div>
     <div class="seg" role="group" aria-label="Sector" id="sectorSeg"></div>
+    <select class="city-pick" id="cityPick" aria-label="More OSCD cities" hidden></select>
     <div class="seg" role="group" aria-label="Detection engine">
       <button data-act="mode:ai">ChangeIntel AI</button><button data-act="mode:naive">Naive NDVI</button>
     </div>
@@ -509,13 +562,15 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
   <div class="dbody">
     <aside class="col left">
       <section class="card rise" style="--d:1">
-        <h3>Layers</h3>
+        <div class="card-h"><h3>Layers</h3>
+          <div class="seg seg-sm" role="group" aria-label="Priority mode" id="sevSeg"></div></div>
         <div class="legend" id="legend"></div>
         <label class="slider">Fill <input type="range" id="fill" min="0" max="80" value="35" aria-label="Polygon fill opacity"></label>
       </section>
       <section class="card tcard rise" style="--d:2">
         <div class="card-h"><span>Detections</span><span class="mono" id="tCount"></span></div>
-        <input class="search" id="search" type="search" placeholder="Filter by ID or change type" aria-label="Filter detections">
+        <div class="filters"><input class="search" id="search" type="search" placeholder="Filter by ID or change type" aria-label="Filter detections">
+          <select class="search" id="stateF" aria-label="Filter by case state"></select></div>
         <div class="tscroll">
           <table>
             <thead><tr>
@@ -534,7 +589,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
       <div class="map" id="map" data-view="swipe">
         <div class="layer" id="layT1"><div class="world"><img id="imgT1" alt="Before imagery" draggable="false"></div></div>
         <div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
-        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
+        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern></defs><g id="unL"></g><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
         <div class="curtain" id="curtain"><div class="knob ctl" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
@@ -576,18 +631,25 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
         </div>
       </section>
       <section class="card rise" style="--d:3">
-        <div class="card-h"><span>Ground truth</span><span class="mono" id="vBadge"></span></div>
-        <p class="vstate" id="vState"></p>
-        <div class="actions">
-          <button class="abtn good" data-act="verify:yes">Confirm change</button>
-          <button class="abtn bad" data-act="verify:no">Flag false alarm</button>
-        </div>
+        <div class="card-h"><span>Case</span><span class="mono" id="vBadge"></span></div>
+        <div class="case-top"><span class="tag" id="cState"></span>
+          <label class="role">Acting as <select id="role" aria-label="Role"></select></label></div>
+        <ol class="trail" id="cTrail"></ol>
+        <input class="search" id="cNote" type="text" placeholder="Note for the audit log (optional)" aria-label="Case note">
+        <div class="actions" id="cMoves"></div>
+        <div class="case-foot"><button class="lnk" data-act="case-undo">Undo last action</button><span>Roles are local to this browser, not authenticated.</span></div>
       </section>
       <section class="card adv rise" style="--d:4">
         <div class="card-h"><span id="advTitle"></span>
           <div class="seg" role="group" aria-label="Advisory language"><button data-act="lang:en">EN</button><button data-act="lang:mr">मराठी</button><button data-act="lang:hi">हिंदी</button></div>
         </div>
         <p id="advBody"></p>
+        <form class="lookup" id="lookup" autocomplete="off">
+          <input class="search" id="lkIn" type="search" list="lkList" aria-label="Look up a pincode or area">
+          <button class="abtn" type="submit" id="lkBtn"></button>
+        </form>
+        <datalist id="lkList"></datalist>
+        <div class="lk-out" id="lkOut" role="status" aria-live="polite" hidden></div>
       </section>
       <section class="card rise" style="--d:5">
         <h3>Exports</h3>
@@ -596,7 +658,9 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
           <button class="abtn" data-act="dl:gpkg">GeoPackage<small>.gpkg</small></button>
           <button class="abtn" data-act="dl:cap">CAP alert<small id="capId"></small></button>
           <button class="abtn" data-act="dl:sitrep">SitRep<small>.pdf</small></button>
-          <button class="abtn" data-act="dl:csv" style="grid-column:1/-1">Filtered table<small>.csv</small></button>
+          <button class="abtn" data-act="dl:csv">Filtered table<small>.csv</small></button>
+          <button class="abtn" data-act="dl:audit">Audit log<small>.json</small></button>
+          <button class="abtn" data-act="dl:verdicts" style="grid-column:1/-1">Officer verdicts (training data)<small>.json</small></button>
         </div>
       </section>
     </aside>
@@ -609,6 +673,22 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
     <p id="benchP"></p>
     <table><thead><tr><th>Metric</th><th class="num">Naive spectral</th><th class="num">ChangeIntel AI</th><th class="num">Change</th></tr></thead><tbody id="benchRows"></tbody></table>
     <div class="note" id="benchNote"></div>
+    <section id="stress" hidden>
+      <div class="stress-h"><h3>Robustness stress test</h3>
+        <div class="seg" role="group" aria-label="Stress metric"><button data-act="stress:f1_score" aria-pressed="true">F1</button><button data-act="stress:false_alarm_rate" aria-pressed="false">False alarms</button></div></div>
+      <p id="stressP"></p>
+      <div class="sleg" id="stressLeg"></div>
+      <div id="stressRows"></div>
+      <div class="note" id="stressNote"></div>
+    </section>
+    <section id="bObj" hidden><div class="stress-h"><h3>Missed changes: object recall by size</h3></div>
+      <p id="bObjP"></p><table><thead><tr><th>Object size</th><th class="num">Objects</th><th class="num">ChangeIntel</th><th class="num">Naive</th></tr></thead><tbody id="bObjRows"></tbody></table></section>
+    <section id="bCreep" hidden><div class="stress-h"><h3>Slow change: consecutive vs anchored comparison</h3></div>
+      <p id="bCreepP"></p><div class="sleg" id="bCreepLeg"></div><div id="bCreepRows"></div><div class="note" id="bCreepNote"></div></section>
+    <section id="bFar" hidden><div class="stress-h"><h3>False alarms per 100 km² of unchanged land</h3></div>
+      <p id="bFarP"></p><table><thead><tr><th>Dataset</th><th class="num">ChangeIntel</th><th class="num">Naive NDVI</th><th class="num">Index rules</th></tr></thead><tbody id="bFarRows"></tbody></table>
+      <div class="note" id="bFarNote"></div></section>
+    <p class="fine" id="bRun"></p>
   </div>
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -621,21 +701,38 @@ const D = /*__DATA__*/null;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
-const TIERS = ['Critical','High','Moderate','Minor'];
-const TIER_VAR = {Critical:'var(--crit)', High:'var(--high)', Moderate:'var(--mod)', Minor:'var(--minor)'};
+const TIERS = ['Critical','High','Medium','Low'];
+const TIER_VAR = {Critical:'var(--crit)', High:'var(--high)', Medium:'var(--mod)', Low:'var(--minor)'};
+// Severity mode (Ideation Baseline §5.3): every polygon carries a tier per mode; switching re-ranks in place
+const SEV_MODES = {encroachment:'Encroachment', disaster:'Disaster'};
+function applySev(){
+  Object.values(D.scenes).forEach(sc => sc.features.concat(sc.creep ? sc.creep.features : []).forEach(f => {
+    f.tier = f.tiers[S.sev]; f.score = f.scores[S.sev]; f.priority = D.severity.priority[f.tier]; }));
+}
 const tierRank = t => 3 - TIERS.indexOf(t);
 const KEYS = Object.keys(D.scenes);
-const city = k => D.scenes[k].place.split(',')[0];
+// OSCD benchmark cities (scripts/build_scenes.py OSCD_PLACES) are labelled "<City> · OSCD"
+const FEATURED = KEYS.filter(k => !/· OSCD$/.test(D.scenes[k].label)), MORE = KEYS.filter(k => !FEATURED.includes(k));
+const city = k => D.scenes[k].nav || D.scenes[k].place.split(',')[0];
 const SHORT = {'Water / Flood Inundation':'Flood / water','Vegetation Loss / Clearing':'Vegetation loss','Vegetation Regrowth':'Vegetation regrowth',
-  'New Building / Structural Encroachment':'New structure','Built-up Structural Encroachment':'Built-up change','Landcover Disturbance':'Land disturbance'};
+  'New Building / Structure':'New structure','New Built-up Surface':'New built-up','Vegetation Cleared / Possible Construction':'Cleared / build?','Ground Disturbance':'Ground disturbance',
+  'Water-body Encroachment':'Water-body encr.','Burn Scar':'Burn scar','Seasonal Vegetation Change':'Seasonal veg.',
+  'Slow Built-up Creep':'Slow creep','Precursor: Cleared Plot':'Cleared plot','Precursor: New Track':'New track'};
 // Advisory = template x selected detection. Only the phrasing is hand-written.
 const TYPE_I18N = {
   'Water / Flood Inundation':{en:'flood inundation', mr:'पूर / जलसाठा', hi:'जल भराव / बाढ़'},
   'Vegetation Loss / Clearing':{en:'vegetation clearing', mr:'वनस्पती तोड', hi:'वनस्पति कटाई'},
   'Vegetation Regrowth':{en:'vegetation regrowth', mr:'वनस्पती वाढ', hi:'वनस्पति वृद्धि'},
-  'New Building / Structural Encroachment':{en:'new construction / encroachment', mr:'नवीन बांधकाम / अतिक्रमण', hi:'नया निर्माण / अतिक्रमण'},
-  'Built-up Structural Encroachment':{en:'built-up encroachment', mr:'बांधकाम अतिक्रमण', hi:'निर्माण अतिक्रमण'},
-  'Landcover Disturbance':{en:'land-cover disturbance', mr:'जमिनीतील बदल', hi:'भूमि आवरण में बदलाव'},
+  'New Building / Structure':{en:'new construction', mr:'नवीन बांधकाम', hi:'नया निर्माण'},
+  'New Built-up Surface':{en:'new built-up surface', mr:'नवीन बांधकाम क्षेत्र', hi:'नया निर्मित क्षेत्र'},
+  'Vegetation Cleared / Possible Construction':{en:'vegetation clearing, possibly construction', mr:'वनस्पती तोड, संभाव्य बांधकाम', hi:'वनस्पति कटाई, संभावित निर्माण'},
+  'Ground Disturbance':{en:'ground disturbance', mr:'जमिनीतील बदल', hi:'भूमि में बदलाव'},
+  'Water-body Encroachment':{en:'encroachment on a water body', mr:'जलसाठ्यावर अतिक्रमण', hi:'जल निकाय पर अतिक्रमण'},
+  'Burn Scar':{en:'burnt area', mr:'जळालेले क्षेत्र', hi:'जला हुआ क्षेत्र'},
+  'Slow Built-up Creep':{en:'slow, year-on-year construction', mr:'हळूहळू वाढणारे बांधकाम', hi:'धीरे-धीरे बढ़ता निर्माण'},
+  'Precursor: Cleared Plot':{en:'a newly cleared plot', mr:'नव्याने साफ केलेला भूखंड', hi:'नया साफ़ किया गया भूखंड'},
+  'Precursor: New Track':{en:'a new access track', mr:'नवीन कच्चा रस्ता', hi:'नया कच्चा रास्ता'},
+  'Seasonal Vegetation Change':{en:'seasonal vegetation change', mr:'हंगामी वनस्पती बदल', hi:'मौसमी वनस्पति बदलाव'},
 };
 const ADV = {
   en:{title:'Civic advisory', body:(f, t, a, p) => `Advisory: ${t} of ${a} m² detected near ${p} (${f.id}, ${f.tier.toLowerCase()} severity). `,
@@ -645,6 +742,32 @@ const ADV = {
   hi:{title:'नागरिक सुरक्षा चेतावनी', body:(f, t, a, p) => `सूचना: ${p} के पास ${a} वर्ग मीटर क्षेत्र में ${t} उपग्रह द्वारा दर्ज किया गया (${f.id})। `,
       urgent:'निचले इलाकों के नागरिक सतर्क रहें; जाँच दल रवाना किया जा रहा है।', routine:'नगर निगम सर्वेक्षण में इसकी जाँच की जाएगी।'},
 };
+// Citizen lookup: pincode / area -> nearest detection, from the OSM place list built per sector
+const TIER_I18N = {Critical:{en:'Critical', mr:'अतिगंभीर', hi:'अति गंभीर'}, High:{en:'High', mr:'गंभीर', hi:'गंभीर'},
+  Medium:{en:'Medium', mr:'मध्यम', hi:'मध्यम'}, Low:{en:'Low', mr:'किरकोळ', hi:'मामूली'}};
+const LK = {
+  en:{ph:'Pincode or area, e.g. ', btn:'Check', unit:['m','km'],
+      near:(p, d, f, t, tier) => `${tier} severity: ${t} detected ${d} from ${p} (${f.id}). Shown on the map.`,
+      far:(p, d) => `No detected change within 1 km of ${p}. The nearest detection is ${d} away.`,
+      none:q => `“${q}” isn't in this sector's pincode or area list.`, off:'Area lookup needs a georeferenced sector.',
+      noneVerified:'No officer-verified changes in this sector yet: changes appear here only after field confirmation.',
+      pending:n => ` ${n} unverified detection${n === 1 ? '' : 's'} within 1 km ${n === 1 ? 'is' : 'are'} awaiting field checks and not shown.`},
+  mr:{ph:'पिनकोड किंवा परिसर, उदा. ', btn:'तपासा', unit:['मी.','किमी'],
+      near:(p, d, f, t, tier) => `${p} पासून ${d} अंतरावर ${t} आढळले (${f.id}, तीव्रता: ${tier}). नकाशावर दाखवले आहे.`,
+      far:(p, d) => `${p} पासून 1 किमी परिसरात कोणताही बदल आढळला नाही. सर्वात जवळचा बदल ${d} अंतरावर आहे.`,
+      none:q => `“${q}” हे या क्षेत्राच्या पिनकोड / परिसर यादीत नाही.`, off:'परिसर शोधासाठी भू-संदर्भित क्षेत्र आवश्यक आहे.',
+      noneVerified:'या क्षेत्रात अद्याप अधिकाऱ्यांनी पडताळलेला कोणताही बदल नाही; प्रत्यक्ष पडताळणीनंतरच बदल येथे दिसतात.',
+      pending:n => ` 1 किमी परिसरातील ${n} अपुष्ट बदल पडताळणीच्या प्रतीक्षेत आहेत आणि दाखवलेले नाहीत.`},
+  hi:{ph:'पिनकोड या इलाका, जैसे ', btn:'जाँचें', unit:['मी','किमी'],
+      near:(p, d, f, t, tier) => `${p} से ${d} की दूरी पर ${t} दर्ज किया गया (${f.id}, गंभीरता: ${tier})। नक्शे पर दिखाया गया है।`,
+      far:(p, d) => `${p} के 1 किमी के दायरे में कोई बदलाव दर्ज नहीं हुआ। सबसे नज़दीकी बदलाव ${d} दूर है।`,
+      none:q => `“${q}” इस क्षेत्र की पिनकोड / इलाका सूची में नहीं है।`, off:'इलाका खोज के लिए भू-संदर्भित क्षेत्र आवश्यक है।',
+      noneVerified:'इस क्षेत्र में अभी तक कोई अधिकारी-सत्यापित बदलाव नहीं है; ज़मीनी पुष्टि के बाद ही बदलाव यहाँ दिखते हैं।',
+      pending:n => ` 1 किमी के भीतर ${n} अपुष्ट बदलाव जाँच की प्रतीक्षा में हैं और दिखाए नहीं गए हैं।`},
+};
+const NEAR_M = 1000;
+const haversine = (a, b, c, d) => { const r = Math.PI/180, x = Math.sin((c-a)*r/2)**2 + Math.cos(a*r)*Math.cos(c*r)*Math.sin((d-b)*r/2)**2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(x)); };
 const B = D.benchmark, AI = B.changeintel_ai_engine, NV = B.naive_spectral_baseline;
 const pct = v => (v*100).toFixed(1) + '%';
 const fmt = (v, d=0) => v.toLocaleString('en-US', {maximumFractionDigits:d});
@@ -654,12 +777,34 @@ const latLon = (b, x, y) => [b.n - y/100*(b.n-b.s), b.w + x/100*(b.e-b.w)];   //
 const fLat = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'N':'S'}`;
 const fLon = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'E':'W'}`;
 
-const S = {th:KEYS[0], sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), q:'', sort:{k:'area', d:-1}, stage:'hero'};
+const S = {th:KEYS[0], role:(() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), stF:'all', sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), q:'', sort:{k:'area', d:-1}, stage:'hero'};
 const sc = () => D.scenes[S.th];
-const feats = () => sc().features;
+// creep & precursor polygons (multi-year series) join the detection list when their layer is on
+const creepFeats = () => (sc().creep && !S.hideCreep) ? sc().creep.features : [];
+const feats = () => sc().features.concat(creepFeats());
 const FA = () => sc().naive.false_alarms;
-let verify = {};
-try { verify = JSON.parse(localStorage.getItem('ci-verify') || '{}'); } catch (e) {}
+/* Officer case workflow (Ideation Baseline #13, browser-only). The audit log is the single source of truth:
+   a case's state is the "to" of its last entry. */
+const CASE_STATES = ['New','Under review','Field verification','Confirmed','Reported','Resolved','Dismissed'];
+const CASE_MOVES = [   // from, to, role allowed, button label
+  ['New','Under review','Analyst','Start review'],
+  ['Under review','Field verification','Analyst','Send for field check'],
+  ['Under review','Dismissed','Analyst','Dismiss as false alarm'],
+  ['Field verification','Confirmed','Field officer','Confirm on site'],
+  ['Field verification','Dismissed','Field officer','Not found on site'],
+  ['Confirmed','Reported','DDMA','Report / file with DDMA'],
+  ['Reported','Resolved','DDMA','Mark resolved'],
+  ['Dismissed','Under review','Analyst','Reopen'],
+];
+const ROLES = ['Analyst','Field officer','DDMA'];
+const VERIFIED = new Set(['Confirmed','Reported','Resolved']);
+const ST_SHORT = {'Under review':['REV',''], 'Field verification':['FLD',''], Confirmed:['✓','ok'], Reported:['RPT','ok'], Resolved:['RES','ok'], Dismissed:['✕','no']};
+let audit = [];
+try { audit = JSON.parse(localStorage.getItem('ci-audit') || '[]'); } catch (e) {}
+const saveAudit = () => { try { localStorage.setItem('ci-audit', JSON.stringify(audit)); } catch (e) {} };
+const caseLog = (f, th = S.th) => audit.filter(e => e.sector === th && e.case === f.id);
+const caseState = f => { const l = caseLog(f); return l.length ? l[l.length - 1].to : 'New'; };
+const stChip = f => { const st = ST_SHORT[caseState(f)]; return st ? `<span class="st ${st[1]}" title="${caseState(f)}">${st[0]}</span>` : ''; };
 
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -916,14 +1061,15 @@ $('#knob').addEventListener('keydown', e => {
   const d = {ArrowLeft:-2, ArrowRight:2}[e.key]; if (d) { e.preventDefault(); e.stopPropagation(); setCurtain(S.curtain + d); }
 });
 map.addEventListener('pointerover', e => {
-  const el = e.target.closest('[data-i],[data-fa]'), tip = $('#tip');
+  const el = e.target.closest('[data-i],[data-fa],[data-un]'), tip = $('#tip');
   $$('.poly.hl').forEach(p => p.classList.remove('hl'));
   if (!el) { tip.classList.remove('on'); return; }
   if (el.dataset.i) {
     const f = feats()[+el.dataset.i];
     $(`.poly[data-i="${el.dataset.i}"]`)?.classList.add('hl');
     tip.innerHTML = `<b>${f.id}</b> · ${f.tier} · ${SHORT[f.type] || f.type} · ${fmt(f.area_sqm)} m²`;
-  } else tip.innerHTML = faText(FA()[+el.dataset.fa]).replace(/^(\S+)/, '<b>$1</b>');
+  } else if (el.dataset.un) tip.innerHTML = '<b>Unobservable</b> · cloud, shadow or no data on either date · not assessed';
+  else tip.innerHTML = faText(FA()[+el.dataset.fa]).replace(/^(\S+)/, '<b>$1</b>');
   tip.classList.add('on');
 });
 map.addEventListener('pointerleave', () => { $('#tip').classList.remove('on'); $('#coords').textContent = 'Hover for coordinates'; });
@@ -934,7 +1080,8 @@ map.addEventListener('pointerleave', () => { $('#tip').classList.remove('on'); $
 function rows(){
   const q = S.q, {k, d} = S.sort;
   return feats().map((f, i) => ({f, i}))
-    .filter(({f}) => !S.hidden.has(f.tier) && (!q || `${f.id} ${f.type} ${f.tier}`.toLowerCase().includes(q)))
+    .filter(({f}) => !S.hidden.has(f.tier) && (!q || `${f.id} ${f.type} ${f.tier}`.toLowerCase().includes(q))
+      && (S.stF === 'all' || (S.stF === 'open' ? !['Dismissed', 'Resolved'].includes(caseState(f)) : caseState(f) === S.stF)))
     .sort((a, b) => d*(k === 'area' ? a.f.area_sqm - b.f.area_sqm
                      : k === 'tier' ? tierRank(a.f.tier) - tierRank(b.f.tier) || a.f.area_sqm - b.f.area_sqm
                      : a.f.id.localeCompare(b.f.id)));
@@ -942,11 +1089,13 @@ function rows(){
 function renderHeader(){
   const g = sc(), b = g.bounds;
   $('#tbTitle').textContent = `${g.label} · ${g.sensor}`;
+  if ($('#cityPick')) { $('#cityPick').value = MORE.includes(S.th) ? S.th : ''; $('#cityPick').classList.toggle('on', MORE.includes(S.th)); }
+  $('#sevSeg').innerHTML = Object.entries(SEV_MODES).map(([k, l]) => `<button data-act="sev:${k}">${l}</button>`).join('');
   $('#tbCoords').textContent = `${fLat(b.n)} – ${fLat(b.s)} · ${fLon(b.w)} – ${fLon(b.e)}`;
   [$('#d1').textContent, $('#d2').textContent] = g.dates;
   $$('[data-act]').forEach(b => {
     const [k, v] = b.dataset.act.split(':');
-    const key = {th:'th', mode:'mode', lang:'lang', view:'view'}[k];
+    const key = {th:'th', mode:'mode', lang:'lang', view:'view', sev:'sev'}[k];
     if (key) b.setAttribute('aria-pressed', S[key] === v);
   });
   map.dataset.view = S.view; map.classList.toggle('naive', S.mode === 'naive');
@@ -962,7 +1111,7 @@ function renderKpis(){
     ['False-alarm rate', pct(NV.false_alarm_rate), '', 'naive · LEVIR-CD'],
   ] : [
     ['Detections', fs.length, fs.length === 1 ? 'polygon' : 'polygons', `vs ${fmt(nv.regions)} naive regions`],
-    ['Changed area', fmt(area), 'm²', `${fmt(area/10000, 2)} ha, UTM metric`],
+    ['Changed area', fmt(area), 'm²', `${fmt(area/10000, 2)} ha, UTM metric` + (sc().unobservable?.pct > 0 ? ` · ${sc().unobservable.pct.toFixed(1)}% not observable` : '')],
     ['Priority sites', crit + high, '', `${crit} critical · ${high} high`],
     ['False-alarm rate', pct(AI.false_alarm_rate), '', `vs ${pct(NV.false_alarm_rate)} naive · LEVIR-CD`],
   ];
@@ -976,36 +1125,57 @@ function renderLegend(){
     return `<label class="lg-row${S.hidden.has(t) ? ' off' : ''}"><input type="checkbox" data-tier="${t}"${S.hidden.has(t) ? '' : ' checked'}>
       <span class="sw" style="--c:${TIER_VAR[t]}"></span>${t}<span class="n">${n}</span></label>`;
   }).join('');
+  const cr = sc().creep;
+  if (cr && cr.features.length) h += `<label class="lg-row${S.hideCreep ? ' off' : ''}"><input type="checkbox" data-layer="creep"${S.hideCreep ? '' : ' checked'}>
+      <span class="sw dot" style="--c:var(--clay)"></span>Creep &amp; precursors<span class="n">${cr.features.length}</span></label>`;
+  const u = sc().unobservable;
+  if (u && u.pct > 0) h += `<label class="lg-row${S.hideUnobs ? ' off' : ''}"><input type="checkbox" data-layer="unobs"${S.hideUnobs ? '' : ' checked'}>
+      <span class="sw hatch"></span>Unobservable<span class="n">${u.pct.toFixed(1)}%</span></label>`;
   if (S.mode === 'naive') h += `<div class="lg-row fa"><span class="sw" style="--c:var(--fa);margin-left:23px"></span>Naive false alarms<span class="n">${fa.length}</span></div>`;
   $('#legend').innerHTML = h;
 }
 function renderTable(){
   const r = rows();
   $('#tbody').innerHTML = r.length ? r.map(({f, i}) =>
-    `<tr data-row="${i}" aria-selected="${i === S.sel}"><td class="mono">${f.id}</td><td><span class="dot" style="--c:${TIER_VAR[f.tier]}"></span>${SHORT[f.type] || f.type}</td><td class="num mono">${fmt(f.area_sqm)}</td></tr>`).join('')
+    `<tr data-row="${i}" aria-selected="${i === S.sel}"><td class="mono">${f.id}${stChip(f)}</td><td><span class="dot" style="--c:${TIER_VAR[f.tier]}"></span>${SHORT[f.type] || f.type}</td><td class="num mono">${fmt(f.area_sqm)}</td></tr>`).join('')
     : `<tr><td colspan="3" class="empty">No detections match these filters.</td></tr>`;
   $('#tCount').textContent = `${r.length} of ${feats().length}`;
   $$('th button').forEach(b => b.textContent = b.textContent.replace(/ [↑↓]$/, '') + (b.dataset.sort === S.sort.k ? (S.sort.d < 0 ? ' ↓' : ' ↑') : ''));
 }
 const pts = a => a.map(p => p.join(',')).join(' ');
+function renderUnobs(){
+  const u = sc().unobservable;
+  $('#unL').innerHTML = u && !S.hideUnobs ? u.polygons.map(p => `<polygon class="unobs" data-un="1" points="${pts(p)}"/>`).join('') : '';
+}
 function renderNaive(){
   $('#faL').innerHTML = S.mode === 'naive' ? FA().map((fa, i) => `<polygon class="fa" data-fa="${i}" points="${pts(fa.pts)}"/>`).join('') : '';
 }
 function faText(fa){
   const nv = sc().naive;
-  return `${fa.id} · ${SHORT[fa.type] || fa.type} · ${fmt(fa.area_sqm)} m² · ${Math.round(fa.overlap*100)}% on ${nv.reference}`;
+  const ref = nv.reference === 'ground truth'
+    ? `${Math.round(fa.overlap*100)}% overlaps ground-truth change`
+    : `not flagged by ChangeIntel (${Math.round(fa.overlap*100)}% overlap) · no ground truth for this tile`;
+  return `${fa.id} · ${SHORT[fa.type] || fa.type} · ${fmt(fa.area_sqm)} m² · ${ref}`;
 }
 function renderMap(){
   let h = '';
   feats().forEach((f, i) => {
     if (S.hidden.has(f.tier)) return;
     if (i === S.sel) h += `<polygon class="halo" points="${pts(f.pts)}"/>`;
-    h += `<polygon class="poly${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]}" points="${pts(f.pts)}"/>`;
+    h += `<polygon class="poly${f.kind ? ' creep' : ''}${caseState(f) === 'Dismissed' ? ' dismissed' : ''}${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]}" points="${pts(f.pts)}"/>`;
   });
   $('#ftL').innerHTML = h;
   $('#pins').innerHTML = feats().map((f, i) =>
     `<span class="pin${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]};left:${f.cx}%;top:${f.cy}%;${S.hidden.has(f.tier) ? 'display:none' : ''}"></span>`).join('');
   applyView(false);
+}
+// inline SVG sparkline of a per-year series (creep polygons): first / last year labelled
+function spark(v, years){
+  const lo = Math.min(...v), hi = Math.max(...v), span = hi - lo || 1, n = v.length - 1;
+  const xy = v.map((y, i) => [i / n * 100, 30 - (y - lo) / span * 28]);
+  return `<svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label="NDBI ${v[0]} in ${years[0]} to ${v[n]} in ${years[n]}">
+    <polyline points="${xy.map(p => p.join(',')).join(' ')}"/></svg>
+    <div class="spark-l"><span>${years[0]} · ${v[0].toFixed(2)}</span><span>${years[n]} · ${v[n].toFixed(2)}</span></div>`;
 }
 function renderInspector(){
   const f = feats()[S.sel]; if (!f) return;
@@ -1014,10 +1184,11 @@ function renderInspector(){
   $('#iPos').textContent = pos >= 0 ? `${pos + 1}/${r.length}` : '';
   $('#iTags').innerHTML = `<span class="tag" style="--c:${TIER_VAR[f.tier]}">${f.tier}</span><span class="tag plain">${f.type}</span>`;
   $('#iSum').textContent = f.summary;
-  $('#iProps').innerHTML = [
+  $('#iProps').innerHTML = (f.series ? `<dt>NDBI / year</dt><dd>${spark(f.series, sc().creep.years)}</dd>` : '') + [
     ['Area', `${fmt(f.area_sqm, 1)} m²`, 1],
     ['Magnitude', `<span class="bar" style="--c:${TIER_VAR[f.tier]}"><i style="width:${f.magnitude*100}%"></i></span>${f.magnitude.toFixed(3)}`, 1],
     ['Action', f.priority.replace(/^Priority (\d) - /, 'P$1 · ')],
+    ['Score', `<span title="norm. area × magnitude × type weight (${SEV_MODES[S.sev]}) × exposure">${(f.score/100).toFixed(2)} = ${f.parts.norm_area.toFixed(2)} × ${f.magnitude.toFixed(2)} × ${(D.severity.weights[S.sev][f.type] ?? 0.5).toFixed(2)} × ${f.parts.exposure.toFixed(2)}</span>`, 1],
     ['Exposure', f.exposure],
     ['Buffer check', f.violation],
     ['Centroid', `${fLat(f.lat)}<br>${fLon(f.lon)}`, 1],
@@ -1026,10 +1197,22 @@ function renderInspector(){
   renderVerify();
 }
 function renderVerify(){
-  const f = feats()[S.sel], v = verify[`${S.th}:${f.id}`] || {c:0, f:0};
-  const state = v.f > v.c ? 'Disputed' : v.c ? 'Field-confirmed' : 'AI detected · unverified';
-  $('#vBadge').textContent = `${v.c} ✓  ${v.f} ⚑`;
-  $('#vState').innerHTML = `<b>${state}.</b> Responder confirmations build the municipal audit trail for ${f.id}.`;
+  const f = feats()[S.sel]; if (!f) return;
+  const st = caseState(f), log = caseLog(f);
+  // field precision for this sector: confirmed / (confirmed + dismissed), from officer verdicts
+  const states = feats().map(caseState), ok = states.filter(x => VERIFIED.has(x)).length, no = states.filter(x => x === 'Dismissed').length;
+  $('#vBadge').textContent = ok + no ? `field precision ${Math.round(ok / (ok + no) * 100)}% · ${ok}/${ok + no}` : 'no verdicts yet';
+  $('#cState').textContent = `${f.id} · ${st}`;
+  $('#cState').style.setProperty('--c', VERIFIED.has(st) ? 'var(--moss)' : st === 'Dismissed' ? 'var(--crit)' : 'var(--ocean)');
+  $('#role').innerHTML = ROLES.map(r => `<option${r === S.role ? ' selected' : ''}>${r}</option>`).join('');
+  $('#cTrail').innerHTML = log.length ? log.slice(-4).reverse().map(e =>
+    `<li><time>${e.ts.slice(5, 16).replace('T', ' ')}</time><span>${e.role}: ${e.from} → <b>${e.to}</b>${e.note ? ` · ${xmlEsc(e.note)}` : ''}</span></li>`).join('')
+    : '<li class="empty">AI detected · no officer action yet.</li>';
+  const moves = CASE_MOVES.map((m, i) => [m, i]).filter(([m]) => m[0] === st && m[2] === S.role);
+  const others = CASE_MOVES.filter(m => m[0] === st && m[2] !== S.role).map(m => m[2]);
+  $('#cMoves').innerHTML = moves.length
+    ? moves.map(([m, i]) => `<button class="abtn ${m[1] === 'Dismissed' ? 'bad' : 'good'}" data-act="case:${i}">${m[3]}</button>`).join('')
+    : `<p class="hint">${st === 'Resolved' ? 'Case closed.' : `No ${S.role} action at this stage${others.length ? `; next step is for ${[...new Set(others)].join(' / ')}` : ''}.`}</p>`;
 }
 function renderAdvisory(){
   const a = ADV[S.lang], f = feats()[S.sel];
@@ -1042,9 +1225,41 @@ function renderBanner(){
   const nv = sc().naive;
   $('#banner').innerHTML = `<b>Naive NDVI baseline:</b> |ΔNDVI| > ${nv.threshold} flags ${fmt(nv.regions)} regions (${fmt(nv.area_sqm)} m²). `
     + `${fmt(nv.false_alarms.length)} of them barely touch ${nv.reference} (<20% overlap) and are drawn dashed. `
-    + `Benchmark false-alarm rate ${pct(NV.false_alarm_rate)} vs ${pct(AI.false_alarm_rate)}.`;
+    + `Benchmark false-alarm rate ${pct(NV.false_alarm_rate)} vs ${pct(AI.false_alarm_rate)}.`
+    + (nv.reference === 'ground truth' ? '' : ` <b>Note:</b> this tile has no usable ground truth, so naive regions are checked against ChangeIntel's own detections. Treat this view as a picture of baseline noise, not a measured accuracy score.`);
 }
-function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderBanner(); }
+const places = () => sc().georeferenced === false ? [] : (sc().places || []);
+const placeName = pl => pl[`name_${S.lang}`] || pl.name;
+function findPlace(q){
+  const k = q.trim().toLowerCase(), names = pl => [pl.name, pl.name_mr, pl.name_hi].filter(Boolean).map(n => n.toLowerCase());
+  return places().find(pl => names(pl).includes(k)) || (k.length > 2 && places().find(pl => names(pl).some(n => n.includes(k))));
+}
+function renderLookup(){
+  const l = LK[S.lang], ps = places(), out = $('#lkOut');
+  $('#lookup').hidden = !ps.length;
+  $('#lkBtn').textContent = l.btn;
+  const pin = ps.find(p => p.kind === 'pincode'), area = ps.find(p => p.kind === 'suburb') || ps[0];
+  $('#lkIn').placeholder = ps.length ? l.ph + [pin && pin.name, area && placeName(area)].filter(Boolean).join(' / ') : '';
+  $('#lkList').innerHTML = ps.map(p => `<option value="${placeName(p)}">`).join('');
+  if (!ps.length) { out.hidden = false; out.style.removeProperty('--c'); out.textContent = l.off; return; }
+  if (!S.lk) { out.hidden = true; return; }
+  out.hidden = false;
+  const pl = S.lk.place;
+  if (!pl) { out.style.removeProperty('--c'); out.textContent = l.none(S.lk.q); return; }
+  // citizens see officer-verified cases only (Ideation Baseline: unverified alerts must not reach the public)
+  const all = feats(), near = f => haversine(pl.lat, pl.lon, f.lat, f.lon);
+  const pending = all.filter(f => !VERIFIED.has(caseState(f)) && caseState(f) !== 'Dismissed' && near(f) <= NEAR_M).length;
+  const vis = all.map((f, i) => [f, i, near(f)]).filter(([f]) => VERIFIED.has(caseState(f))).sort((a, b) => a[2] - b[2]);
+  S.lk.nearest = undefined;
+  if (!vis.length) { out.style.removeProperty('--c'); out.textContent = l.noneVerified + (pending ? l.pending(pending) : ''); return; }
+  const [f, i, m] = vis[0], d = m < 1000 ? `${Math.round(m / 10) * 10} ${l.unit[0]}` : `${(m / 1000).toFixed(1)} ${l.unit[1]}`;
+  out.style.setProperty('--c', m <= NEAR_M ? TIER_VAR[f.tier] : 'var(--forest)');
+  out.textContent = (m <= NEAR_M
+    ? l.near(placeName(pl), d, f, (TYPE_I18N[f.type] || {})[S.lang] || f.type, TIER_I18N[f.tier][S.lang])
+    : l.far(placeName(pl), d)) + (pending ? l.pending(pending) : '');
+  if (m <= NEAR_M) S.lk.nearest = i;
+}
+function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderUnobs(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderLookup(); renderBanner(); }
 
 function select(i, flyTo){
   S.sel = i; renderMap(); renderInspector(); renderAdvisory();
@@ -1059,7 +1274,7 @@ function step(d){
 }
 
 async function loadTheater(th){
-  S.th = th; S.hidden.clear(); S.q = ''; $('#search').value = '';
+  S.th = th; S.sev = sc().default_mode || 'encroachment'; applySev(); S.hidden.clear(); S.q = ''; $('#search').value = ''; S.lk = null; $('#lkIn').value = '';
   const fs = feats();
   fs.forEach(f => { const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
     f._span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); });
@@ -1084,6 +1299,12 @@ function download(data, name, mime){
 }
 const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const xmlEsc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function capNote(f){
+  const st = caseState(f), last = caseLog(f).filter(e => VERIFIED.has(e.to))[0];
+  return VERIFIED.has(st)
+    ? `Field-confirmed by ${last.role} on ${last.ts.slice(0, 10)}${last.note ? ` (${last.note})` : ''}; case state ${st}. Draft awaiting DDMA sign-off.`
+    : `Draft alert generated by ChangeIntel AI. Not yet field-verified (case state: ${st}). Awaiting official verification and sign-off by the District Disaster Management Authority (DDMA).`;
+}
 function capXml(f){
   const crit = f.tier === 'Critical', la = f.lat, lo = f.lon;
   const sent = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
@@ -1100,7 +1321,7 @@ function capXml(f){
   <msgType>Alert</msgType>
   <scope>Restricted</scope>
   <restriction>For Official Authorization Only</restriction>
-  <note>Draft alert generated by ChangeIntel AI. Awaiting official verification and sign-off by District Disaster Management Authority (DDMA).</note>
+  <note>${xmlEsc(capNote(f))}</note>
   <info>
     <language>en-IN</language>
     <category>Geo</category>
@@ -1110,7 +1331,7 @@ function capXml(f){
     <certainty>Observed</certainty>
     <headline>${xmlEsc(`Satellite Change Alert: ${f.area_sqm} m² ${f.type} Detected`)}</headline>
     <description>${xmlEsc(`Bi-temporal satellite intelligence detected a change footprint of ${f.area_sqm} m² at (${la.toFixed(6)}, ${lo.toFixed(6)}) with confidence ${(f.magnitude*100).toFixed(1)}%. Classification: ${f.type}. ${f.summary}`)}</description>
-    <instruction>Field officers to inspect coordinates immediately. Verify structural integrity or illegal encroachment before taking regulatory action.</instruction>
+    <instruction>Field officers to verify on site. Satellite encroachment flags are screening results: check against Development Plan and CRZ maps before any regulatory action.</instruction>
     <area>
       <areaDesc>${xmlEsc(`${sc().label}: footprint near (${la.toFixed(6)}, ${lo.toFixed(6)})`)}</areaDesc>
       <polygon>${ring.map(([y, x]) => `${y.toFixed(6)},${x.toFixed(6)}`).join(' ')}</polygon>
@@ -1121,16 +1342,23 @@ function capXml(f){
 }
 function csv(){
   const q = v => `"${String(v).replace(/"/g, '""')}"`;
-  const head = ['feature_id','severity_tier','change_type','area_sqm','magnitude','centroid_lat','centroid_lon','action_priority','verification'];
+  const head = ['feature_id','severity_tier','change_type','area_sqm','magnitude','centroid_lat','centroid_lon','action_priority','case_state'];
   return [head.join(',')].concat(rows().map(({f}) => {
-    const v = verify[`${S.th}:${f.id}`] || {c:0, f:0};
-    return [f.id, f.tier, q(f.type), f.area_sqm, f.magnitude, f.lat.toFixed(6), f.lon.toFixed(6), q(f.priority), `${v.c} confirmed / ${v.f} flagged`].join(',');
+    return [f.id, f.tier, q(f.type), f.area_sqm, f.magnitude, f.lat.toFixed(6), f.lon.toFixed(6), q(f.priority), q(caseState(f))].join(',');
   })).join('\n');
 }
 const DL = {
   geojson: () => download(D.files[S.th].geojson, `${S.th}_change_intelligence.geojson`, 'application/geo+json'),
   gpkg: () => download(bytes(D.files[S.th].gpkg), `${S.th}_change_intelligence.gpkg`, 'application/geopackage+sqlite3'),
-  cap: () => { const f = feats()[S.sel]; download(capXml(f), `sachet_cap_${S.th}_${f.id}.xml`, 'application/xml'); },
+  cap: () => { const f = feats()[S.sel];
+    if (caseState(f) === 'Dismissed') return toast(`${f.id} was dismissed as a false alarm: no alert drafted`);
+    download(capXml(f), `sachet_cap_${S.th}_${f.id}.xml`, 'application/xml'); },
+  audit: () => download(JSON.stringify(audit, null, 1), 'changeintel_audit_log.json', 'application/json'),
+  verdicts: () => download(JSON.stringify(KEYS.flatMap(th => D.scenes[th].features.concat(D.scenes[th].creep ? D.scenes[th].creep.features : [])
+      .map(f => [f, caseLog(f, th)]).filter(([, l]) => l.length && (VERIFIED.has(l[l.length - 1].to) || l[l.length - 1].to === 'Dismissed'))
+      .map(([f, l]) => ({sector: th, id: f.id, verdict: l[l.length - 1].to === 'Dismissed' ? 'false_alarm' : 'confirmed',
+        state: l[l.length - 1].to, decided_at: l[l.length - 1].ts, change_type: f.type, area_sqm: f.area_sqm, ring_latlon: f.ring}))), null, 1),
+    'changeintel_officer_verdicts.json', 'application/json'),
   sitrep: () => download(bytes(D.files[S.th].sitrep), `ChangeIntel_SitRep_${S.th}.pdf`, 'application/pdf'),
   csv: () => download(csv(), `${S.th}_detections.csv`, 'text/csv'),
 };
@@ -1147,7 +1375,8 @@ document.addEventListener('click', e => {
     case 'back': if (S.stage === 'dash') fly(S.th, -1); break;
     case 'th': if (v !== S.th) { loadTheater(v).then(() => toast(`Loaded ${D.scenes[v].label}`)); } break;
     case 'mode': S.mode = v; renderHeader(); renderKpis(); renderLegend(); renderNaive(); break;
-    case 'lang': S.lang = v; renderHeader(); renderAdvisory(); break;
+    case 'sev': S.sev = v; applySev(); renderAll(); toast(`${SEV_MODES[v]} priorities: tiers re-ranked`); break;
+    case 'lang': S.lang = v; renderHeader(); renderAdvisory(); renderLookup(); break;
     case 'view': S.view = v; renderHeader(); setCurtain(S.curtain); break;
     case 'zoom': { const r = map.getBoundingClientRect();
       v === 'fit' ? fitView(true) : zoomAt(v === 'in' ? 1.6 : 1/1.6, r.width/2, r.height/2, true); break; }
@@ -1157,16 +1386,23 @@ document.addEventListener('click', e => {
       const f = feats()[S.sel], txt = `${f.lat.toFixed(6)}, ${f.lon.toFixed(6)}`;
       (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast(`Copied ${txt}`), () => toast(txt));
       break; }
-    case 'verify': {
-      const f = feats()[S.sel], key = `${S.th}:${f.id}`, rec = verify[key] = verify[key] || {c:0, f:0};
-      v === 'yes' ? rec.c++ : rec.f++;
-      try { localStorage.setItem('ci-verify', JSON.stringify(verify)); } catch (err) {}
-      renderVerify();
-      toast(v === 'yes' ? `${f.id}: ground-truth confirmation logged` : `${f.id}: flagged for analyst review`);
+    case 'case': {
+      const f = feats()[S.sel], [from, to] = CASE_MOVES[+v];
+      if (caseState(f) !== from) break;
+      audit.push({ts: new Date().toISOString(), sector: S.th, case: f.id, from, to, role: S.role, note: $('#cNote').value.trim()});
+      saveAudit(); $('#cNote').value = '';
+      renderVerify(); renderTable(); renderMap(); renderLookup();
+      toast(`${f.id}: ${from} → ${to}`);
+      break; }
+    case 'case-undo': {
+      const e = audit.pop(); if (!e) { toast('Nothing to undo'); break; }
+      saveAudit(); renderVerify(); renderTable(); renderMap(); renderLookup();
+      toast(`Undid ${e.case}: ${e.from} → ${e.to}`);
       break; }
     case 'dl': DL[v](); break;
     case 'bench': $('#bench').showModal(); break;
     case 'bench-close': $('#bench').close(); break;
+    case 'stress': renderStress(v); break;
   }
 });
 $('#tbody').addEventListener('click', e => { const tr = e.target.closest('[data-row]'); if (tr) select(+tr.dataset.row, true); });
@@ -1176,6 +1412,8 @@ $('#tbody').addEventListener('pointerover', e => {
   if (tr) $(`.poly[data-i="${tr.dataset.row}"]`)?.classList.add('hl');
 });
 $('#legend').addEventListener('change', e => {
+  if (e.target.dataset.layer === 'unobs') { S.hideUnobs = !e.target.checked; renderLegend(); renderUnobs(); return; }
+  if (e.target.dataset.layer === 'creep') { S.hideCreep = !e.target.checked; S.sel = Math.min(S.sel, feats().length - 1); renderAll(); return; }
   const t = e.target.dataset.tier; if (!t) return;
   e.target.checked ? S.hidden.delete(t) : S.hidden.add(t);
   renderLegend(); renderTable(); renderMap(); renderInspector();
@@ -1183,6 +1421,16 @@ $('#legend').addEventListener('change', e => {
 $$('th button').forEach(b => b.addEventListener('click', () => {
   const k = b.dataset.sort; S.sort = {k, d:S.sort.k === k ? -S.sort.d : (k === 'id' ? 1 : -1)}; renderTable(); renderInspector();
 }));
+$('#lookup').addEventListener('submit', e => {
+  e.preventDefault();
+  const q = $('#lkIn').value.trim(); if (!q) return;
+  S.lk = {q, place: findPlace(q)};
+  renderLookup();
+  if (S.lk.place && S.lk.nearest !== undefined) select(S.lk.nearest, true);
+});
+$('#role').addEventListener('change', e => { S.role = e.target.value; try { localStorage.setItem('ci-role', S.role); } catch (err) {} renderVerify(); });
+$('#stateF').innerHTML = [['all','All states'],['open','Open cases'], ...CASE_STATES.map(x => [x, x])].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+$('#stateF').addEventListener('change', e => { S.stF = e.target.value; renderTable(); renderInspector(); });
 $('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); renderTable(); renderInspector(); });
 $('#fill').addEventListener('input', e => $('#vec').style.setProperty('--fill', e.target.value/100));
 $('#bench').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
@@ -1200,12 +1448,76 @@ let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() 
 /* sector-driven chrome: nav, CTAs, switcher */
 (() => {
   const arw = '<svg class="arw" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M0.8 5h10M7.1 1.4 10.9 5l-3.8 3.6" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-  const links = KEYS.map(k => `<a data-act="fly:${k}">${city(k)}</a>`).join('') + '<a data-act="bench">Benchmark</a>';
+  // featured sectors get buttons / nav links; the OSCD benchmark cities go in one dropdown so 20+ sectors fit
+  const links = FEATURED.map(k => `<a data-act="fly:${k}">${city(k)}</a>`).join('') + '<a data-act="bench">Benchmark</a>';
   $('#navLinks').innerHTML = links; $('#menuLinks').innerHTML = links;
+  if (MORE.length) {
+    $('#cityPick').hidden = false;
+    $('#cityPick').innerHTML = `<option value="">More cities (${MORE.length})</option>` + MORE.map(k => `<option value="${k}">${city(k)}</option>`).join('');
+    $('#cityPick').addEventListener('change', e => { const k = e.target.value; if (k && k !== S.th) loadTheater(k).then(() => { renderHeader(); toast(`Loaded ${D.scenes[k].label}`); }); });
+  }
   $('#ctas').innerHTML = KEYS.slice(0, 2).map((k, i) =>
     `<button class="btn btn-lg ${i ? 'btn-ghost' : 'btn-primary'}" data-act="fly:${k}">${i ? `${city(k)} tile` : `Zoom into ${city(k)}`}${arw}</button>`).join('');
-  $('#sectorSeg').innerHTML = KEYS.map(k => `<button data-act="th:${k}">${city(k)}</button>`).join('');
+  $('#sectorSeg').innerHTML = FEATURED.map(k => `<button data-act="th:${k}">${city(k)}</button>`).join('');
   $('#navF1').textContent = `F1 ${pct(AI.f1_score)}`;
+})();
+
+/* stress test chart: T2 perturbed, ground truth unchanged */
+const ST = D.stress, ST_M = [['ai_raw','ChangeIntel','var(--forest)'],['ai_stable','+ stable-pixel normalisation','var(--ocean)'],['ai_hist_matched','+ histogram matching','var(--minor)'],['naive','Naive spectral','var(--fa)']]
+  .filter(([k]) => !ST || k in ST.conditions[0]);
+function renderStress(metric){
+  $$('[data-act^="stress:"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.act === `stress:${metric}`));
+  const max = Math.max(...ST.conditions.flatMap(c => ST_M.map(([k]) => c[k][metric]))) || 1;
+  $('#stressRows').innerHTML = ST.conditions.map(c => `<div class="srow"><b>${c.name}</b><div class="sbars">${ST_M.map(([k, l, col]) =>
+    `<div class="sbar" title="${l}"><span><i style="--c:${col};width:${c[k][metric]/max*100}%"></i></span><em>${pct(c[k][metric])}</em></div>`).join('')}</div></div>`).join('');
+}
+if (ST) {
+  $('#stress').hidden = false;
+  $('#stressP').textContent = `T2 is brightened, darkened or shadowed while ground truth stays the same, so anything newly flagged is a false alarm. ${ST.dataset}, ${ST.samples} pairs.`;
+  $('#stressLeg').innerHTML = ST_M.map(([, l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('');
+  const by = k => ST.conditions.find(c => c.name === k), clean = by('Clean'),
+    worst = k => ST.conditions.reduce((a, c) => c[k].f1_score < a[k].f1_score ? c : a);
+  $('#stressNote').innerHTML = ST_M.map(([k, l]) => { const w = worst(k);
+    return `<b>${l}:</b> F1 ${pct(clean[k].f1_score)} clean, lowest ${pct(w[k].f1_score)} (${w.name.toLowerCase()}).`; }).join('<br>')
+    + (ST.misregistration ? `<br><b>Misregistration:</b> before image shifted ${ST.misregistration.shift_px.join('×')} px: F1 ${pct(ST.misregistration.ai_raw.f1_score)}; after registering it onto the after image ${pct(ST.misregistration.ai_registered.f1_score)}.` : '');
+  renderStress('f1_score');
+}
+
+/* benchmark dialog: misses by object size, slow change, false alarms per area, runtime */
+(() => {
+  const r = v => v == null ? '–' : pct(v);
+  if (B.objects) {
+    const a = B.objects.ai, n = B.objects.naive;
+    $('#bObj').hidden = false;
+    $('#bObjP').textContent = `A ground-truth object counts as found when detections cover at least half of it. ${B.dataset}, ${fmt(a.gt_objects)} objects. Object precision (IoU > 0.5): ChangeIntel ${r(a.precision_iou50)}, naive ${r(n.precision_iou50)}.`;
+    $('#bObjRows').innerHTML = a.recall_by_size.map((b, i) => `<tr><td>${b.bin}</td><td class="num mono">${fmt(b.objects)}</td><td class="num mono win">${r(b.recall_hit50)}</td><td class="num mono">${r(n.recall_by_size[i].recall_hit50)}</td></tr>`).join('')
+      + `<tr><td><b>All</b></td><td class="num mono">${fmt(a.gt_objects)}</td><td class="num mono win">${r(a.recall_hit50)}</td><td class="num mono">${r(n.recall_hit50)}</td></tr>`;
+  }
+  const C = B.creep_vs_sudden;
+  if (C) {
+    $('#bCreep').hidden = false;
+    $('#bCreepP').textContent = `Each LEVIR-CD test pair (${C.pairs} with change) becomes a ${C.steps}-step sequence where every new building appears gradually. A system that compares each new image only with the previous one sees ${100 / C.steps}% of the change per step; one anchored to the first image sees it accumulate. Synthetic blending, not real staged construction.`;
+    const S2 = [['consecutive_recall_hit50', 'Consecutive images', 'var(--fa)'], ['anchored_recall_hit50', 'Anchored to first image', 'var(--forest)']];
+    $('#bCreepLeg').innerHTML = S2.map(([, l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join('');
+    $('#bCreepRows').innerHTML = C.per_step.map(s => `<div class="srow"><b>Step ${s.step}</b><div class="sbars">${S2.map(([k, l, col]) =>
+      `<div class="sbar" title="${l}"><span><i style="--c:${col};width:${(s[k] || 0) * 100}%"></i></span><em>${r(s[k])}</em></div>`).join('')}</div></div>`).join('');
+    $('#bCreepNote').innerHTML = `<b>Objects found at any step, consecutive comparison:</b> ${r(C.consecutive_any_step_recall_hit50)}. <b>Anchored, final step:</b> ${r(C.anchored_final_recall_hit50)}. This is why the Sentinel-2 creep detector compares the whole series, not neighbouring years.`;
+  }
+  const rows = [];
+  // in-domain (0.5 m) the low ChangeIntel figure is a win; at 10 m it is low because the model barely fires, so it is starred
+  const far = (label, d, note, inDomain) => d && rows.push(`<tr><td>${label}${note ? `<br><small>${note}</small>` : ''}</td>${['ai', 'naive', 'spectral'].map((k, i) =>
+    `<td class="num mono${i === 0 && inDomain ? ' win' : ''}">${d[k] == null ? '–' : d[k].toFixed(2)}${i === 0 && !inDomain ? '*' : ''}</td>`).join('')}</tr>`);
+  far(B.dataset, B.false_alarm_km2_per_100km2, '0.5 m aerial', true);
+  if (B.oscd) far(`OSCD, ${B.oscd.cities.length} cities`, B.oscd.false_alarm_km2_per_100km2, '10 m Sentinel-2');
+  const SN = B.seasonal_no_change;
+  if (SN) far(`Mumbai, ${SN.dates ? SN.dates.join(' → ') : 'seasonal pair'}`, SN.flagged_km2_per_100km2, 'post-monsoon vs dry season · all flagged area, an upper bound');
+  if (rows.length) {
+    $('#bFar').hidden = false;
+    $('#bFarP').textContent = 'Area wrongly flagged, measured on land the ground truth marks unchanged. Index rules are the training-free Sentinel-2 detector built from the change-type indices.';
+    $('#bFarRows').innerHTML = rows.join('');
+    if (B.oscd) $('#bFarNote').innerHTML = `<b>* Not a win:</b> ChangeIntel's model was trained on 0.5 m aerial images and barely fires on 10 m Sentinel-2 (OSCD F1 ${r(B.oscd.changeintel_ai_engine.f1_score)}; naive ${r(B.oscd.naive_spectral_baseline.f1_score)}, index rules ${r(B.oscd.spectral_index_rules.f1_score)}), so it also flags almost nothing on unchanged land. Use LEVIR-CD for its accuracy. The seasonal row shows what naive NDVI does across a monsoon-to-dry-season pair.`;
+  }
+  if (B.runtime) $('#bRun').textContent = `Runtime: ${B.runtime.s_per_km2} s per km² at 0.5 m (${B.runtime.megapixels_per_s} megapixels/s, model inference on Apple M5 Max). At 10 m that is ${(B.runtime.s_per_km2 / 400).toFixed(4)} s per km².`;
 })();
 
 /* benchmark dialog + hero meta from data */
@@ -1215,7 +1527,7 @@ let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() 
     const lower = k === 'false_alarm_rate', rel = (AI[k] - NV[k])/NV[k]*100;
     return `<tr><td><b>${l}</b></td><td class="num mono${lower ? ' lose' : ''}">${pct(NV[k])}</td><td class="num mono win">${pct(AI[k])}</td><td class="num mono win">${rel > 0 ? '+' : ''}${rel.toFixed(1)}%</td></tr>`;
   }).join('');
-  $('#benchP').textContent = `Fine-tuned Bitemporal Transformer (BIT) vs. a naive spectral-difference baseline, evaluated on ${B.evaluation_samples_count} LEVIR-CD test tiles.`;
+  $('#benchP').textContent = `Fine-tuned Bitemporal Transformer (BIT) vs. a naive spectral-difference baseline, evaluated on the ${B.dataset || "LEVIR-CD test split"} (${B.evaluation_samples_count} image pairs, pixel counts pooled).`;
   $('#benchNote').innerHTML = `<b>Takeaway:</b> naive spectral differencing mistakes seasonal vegetation and sun-angle shifts for change (${pct(NV.false_alarm_rate)} false alarms). ChangeIntel cuts false alarms by <b>${B.false_alarm_reduction_percentage}%</b> to ${pct(AI.false_alarm_rate)}.`;
   $('#heroMeta').innerHTML = `LEVIR-CD F1 <i>${pct(AI.f1_score)}</i> · false alarms <i>${pct(AI.false_alarm_rate)}</i> vs ${pct(NV.false_alarm_rate)} naive`;
 })();

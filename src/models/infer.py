@@ -9,7 +9,11 @@ import torch
 from scipy.signal.windows import hann
 
 from src.data.geotiff_processor import GeoTIFFProcessor
+from src.data.harmonise import stable_pixel_normalise
 from src.models.bit_model import load_bit_model, BitemporalTransformer
+
+# Chosen by src/models/stress_test.py (128 LEVIR-CD pairs, 7 conditions): see data/outputs/stress_test.json
+DEFAULT_NORMALISATION = "none"
 
 
 class TiledInferenceEngine:
@@ -51,7 +55,7 @@ class TiledInferenceEngine:
         self,
         img_t1: np.ndarray,
         img_t2: np.ndarray,
-        normalize_radiometry: bool = True
+        normalize_radiometry=None
     ) -> np.ndarray:
         """
         Runs tiled inference on a pair of (C, H, W) images.
@@ -59,7 +63,11 @@ class TiledInferenceEngine:
         Args:
             img_t1: (C, H, W) numpy array [0, 255] or [0, 1] for T1
             img_t2: (C, H, W) numpy array [0, 255] or [0, 1] for T2
-            normalize_radiometry: If True, matches histogram of T2 to T1
+            normalize_radiometry: "none" | "global" | "stable" (True means "global", False "none").
+                "global" matches T2's histogram to T1; on the LEVIR-CD test split it costs ~5 F1 points
+                even under ±30% brightness shifts and cast shadows, because it erases real change when a
+                large share of the tile changes. "stable" fits a gain/offset on low-change pixels only
+                (src/data/harmonise.py). The default is chosen by src/models/stress_test.py.
 
         Returns:
             prob_map: (H, W) float32 array in [0.0, 1.0] representing change probability
@@ -76,8 +84,13 @@ class TiledInferenceEngine:
             t2_rgb = t2_rgb.astype(np.float32) / 255.0
 
         # Feature #4: Radiometric Normalization
-        if normalize_radiometry:
+        mode = {True: "global", False: "none", None: DEFAULT_NORMALISATION}.get(normalize_radiometry, normalize_radiometry)
+        if mode == "global":
             t2_rgb = GeoTIFFProcessor.match_radiometry(t2_rgb, t1_rgb)
+        elif mode == "stable":
+            t2_rgb = stable_pixel_normalise(t1_rgb, t2_rgb)
+        elif mode != "none":
+            raise ValueError(f"normalize_radiometry must be none|global|stable, got {normalize_radiometry!r}")
 
         # Pad image so it divides cleanly by patch_size if needed
         pad_h = (self.patch_size - (h % self.patch_size)) % self.patch_size

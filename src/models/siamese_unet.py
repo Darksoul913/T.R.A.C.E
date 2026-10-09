@@ -49,8 +49,7 @@ class SiameseUNet(nn.Module):
                 encoder_channels=self.encoder.out_channels,
                 decoder_channels=decoder_channels,
                 n_blocks=5,
-                use_batchnorm=True,
-                center=False,
+                use_norm="batchnorm",
                 attention_type=None
             )
             self.segmentation_head = smp.base.SegmentationHead(
@@ -69,7 +68,7 @@ class SiameseUNet(nn.Module):
             feats1 = self.encoder(x1)
             feats2 = self.encoder(x2)
             diff_feats = [torch.abs(f1 - f2) for f1, f2 in zip(feats1, feats2)]
-            decoded = self.decoder(*diff_feats)
+            decoded = self.decoder(diff_feats)
             return self.segmentation_head(decoded)
 
     def predict_change_prob(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:

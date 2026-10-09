@@ -21,6 +21,7 @@ from streamlit_folium import st_folium
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.data.geotiff_processor import GeoTIFFProcessor
+from src.data.harmonise import align, apply_shift, correct_shift
 from src.models.infer import TiledInferenceEngine
 from src.models.naive_baseline import NaiveBaselineComparator
 from src.geospatial.vectorizer import GeospatialVectorizer
@@ -107,7 +108,8 @@ with st.sidebar:
 
     st.subheader("Filter & Sensitivity")
     prob_threshold = st.slider("Confidence Cutoff", min_value=0.30, max_value=0.85, value=0.50, step=0.05)
-    min_area_filter = st.slider("Min Area (m²)", min_value=10, max_value=250, value=25, step=5)
+    min_area_px = st.slider("Min Area (pixels)", min_value=1, max_value=20, value=4, step=1,
+                            help="Resolution-aware: 4 px is 1 m² at 0.5 m and 400 m² at 10 m")
 
     st.divider()
     st.markdown("### 🏛️ Policy & Standards Alignment")
@@ -147,37 +149,55 @@ with rasterio.open(t1_path) as s1:
     bounds = s1.bounds
 
 with rasterio.open(t2_path) as s2:
-    t2_bands = s2.read()
+    t2_bands, meta2 = s2.read(), {"transform": s2.transform, "crs": s2.crs}
+
+# Input harmonisation: T2 onto T1's grid, then register T1 onto T2 (outputs stay in the post-event frame)
+meta1 = {"transform": trans, "crs": crs}
+t2_bands, _ = align(t1_bands, t2_bands, meta1, meta2)
+t1_bands, shift = correct_shift(t2_bands, t1_bands)
+
+# Spectral bands (true reflectance when available) for NDVI/NDWI/NDBI and the naive baseline
+refl = GeoTIFFProcessor.load_reflectance(t1_path.replace("_t1_pre.tif", ""))
+s1_bands, s2_bands = (apply_shift(refl[0], shift), align(refl[0], refl[1], meta1, meta2)[0]) if refl else (t1_bands, t2_bands)
 
 # Run Model / Comparator
 engine = get_inference_engine()
 
 if "Naive" in comparator_mode:
     # Feature #2: Naive baseline
-    diff_map, bin_mask = NaiveBaselineComparator.compute_naive_change(t1_bands, t2_bands, threshold=0.18)
+    diff_map, bin_mask = NaiveBaselineComparator.compute_naive_change(s1_bands, s2_bands, threshold=0.18)
     prob_map = diff_map
     engine_label = "Naive Spectral Difference Baseline"
 else:
-    # ChangeIntel AI: Feature #3 (Tiled Inference) + Feature #4 (Histogram Matching)
-    prob_map = engine.run_inference(t1_bands, t2_bands, normalize_radiometry=True)
+    # ChangeIntel AI: Feature #3 (Tiled Inference). Histogram matching (#4) is off by default, see infer.py
+    prob_map = engine.run_inference(t1_bands, t2_bands)
+    # Unobservable (cloud / shadow / nodata) is masked out of detection, never reported as "no change"
+    # no data from reflectance when available: the display stretch clips dark water to 0 in every band
+    unobs = (s1_bands == 0).all(axis=0) | (s2_bands == 0).all(axis=0)
+    cloud = GeoTIFFProcessor.load_cloud_mask(t1_path.replace("_t1_pre.tif", ""))
+    if cloud is not None:
+        unobs |= cloud
+    prob_map[unobs] = 0.0
+    if unobs.any():
+        st.caption(f"⛅ {unobs.mean():.1%} of this tile is unobservable (cloud, shadow or no data) and was not assessed.")
     engine_label = "ChangeIntel Bitemporal Transformer (BIT)"
 
 # Feature #7 & #8: Clean Vectorization & Severity Scoring
 vectorizer = GeospatialVectorizer(
-    min_area_sqm=float(min_area_filter),
+    min_area_px=int(min_area_px),
     prob_threshold=float(prob_threshold)
 )
-raw_gdf = vectorizer.vectorize(prob_map, trans, crs, t1_bands, t2_bands)
+raw_gdf = vectorizer.vectorize(prob_map, trans, crs, s1_bands, s2_bands)
 
 # Feature #11: OSM Exposure Overlay
-gdf = OSMExposureOverlay.enrich_with_exposure(raw_gdf)
+gdf = OSMExposureOverlay.enrich_with_exposure(raw_gdf, georeferenced="Mumbai" in dataset_choice)  # LEVIR-CD tiles have no real coordinates
 
 
 # ---------------- TOP EXECUTIVE KPI HEADER ----------------
 total_area = float(gdf["area_sqm"].sum()) if not gdf.empty else 0.0
 crit_count = int((gdf["severity_tier"] == "Critical").sum()) if not gdf.empty else 0
 high_count = int((gdf["severity_tier"] == "High").sum()) if not gdf.empty else 0
-mod_count = int((gdf["severity_tier"] == "Moderate").sum()) if not gdf.empty else 0
+mod_count = int((gdf["severity_tier"] == "Medium").sum()) if not gdf.empty else 0
 total_polys = len(gdf)
 
 # Calculate false alarms pruned (difference between naive pixel estimate and filtered polygons)
@@ -255,8 +275,8 @@ with tab_cmd:
             color_map = {
                 "Critical": "#EF4444",
                 "High": "#F97316",
-                "Moderate": "#EAB308",
-                "Minor": "#3B82F6"
+                "Medium": "#EAB308",
+                "Low": "#3B82F6"
             }
             color = color_map.get(sev, "#8B5CF6")
             return {
@@ -411,9 +431,9 @@ with tab_citizen:
     f_col1, f_col2, f_col3 = st.columns([1, 1, 2])
     with f_col1:
         if st.button("✅ Confirm Damage / Encroachment", use_container_width=True):
-            st.toast("Thank you! Ground confirmation recorded. Polygon confidence elevated to 95%.", icon="✅")
+            st.toast("Thanks! Your report is noted for this session. Officers record verdicts in the case workflow of the static console (web/index.html).", icon="✅")
     with f_col2:
         if st.button("⚠️ Report False Alarm (Shadow / Lawn)", use_container_width=True):
-            st.toast("Thank you! Community feedback noted. Flagged for false-alarm review.", icon="⚠️")
+            st.toast("Thanks! Your report is noted for this session. An analyst reviews possible false alarms in the case workflow.", icon="⚠️")
     with f_col3:
-        st.info("💡 **Why this matters:** Satellite sensors lack on-the-ground eyes. Citizen verification refines the AI confidence score and eliminates false evictions/demolitions.")
+        st.info("💡 **Why this matters:** Satellite sensors lack on-the-ground eyes. Field verification decides which detections become alerts, so unverified changes never trigger evictions or demolitions.")

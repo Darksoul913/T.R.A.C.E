@@ -13,7 +13,7 @@ Performs:
 from typing import Optional, List, Dict, Any, Tuple
 import numpy as np
 import rasterio
-from rasterio.features import shapes
+from rasterio.features import shapes, geometry_mask
 from rasterio.transform import Affine
 from rasterio.crs import CRS
 from shapely.geometry import shape, Polygon, MultiPolygon
@@ -31,17 +31,35 @@ class GeospatialVectorizer:
 
     def __init__(
         self,
-        min_area_sqm: float = 25.0,
+        min_area_sqm: Optional[float] = None,
         prob_threshold: float = 0.50,
         morphology_radius: int = 1,
         min_compactness: float = 0.05,
-        simplify_tolerance: float = 0.00002
+        simplify_tolerance: float = 0.00002,
+        min_area_px: int = 4,
+        min_width_px: float = 1.5
     ):
+        # Minimum area is resolution-aware: min_area_px pixels (4 px = 1 m² at 0.5 m, 400 m² at 10 m).
+        # min_area_sqm, if given, overrides it.
         self.min_area_sqm = min_area_sqm
+        self.min_area_px = min_area_px
+        self.min_width_px = min_width_px
         self.prob_threshold = prob_threshold
         self.morphology_radius = morphology_radius
         self.min_compactness = min_compactness
         self.simplify_tolerance = simplify_tolerance
+
+    @classmethod
+    def pixel_area_sqm(cls, transform: Affine, crs: Any, shape_hw: Tuple[int, int]) -> float:
+        """Ground area of one pixel at the raster centre, in m² (geographic CRSs via local UTM)."""
+        crs = CRS.from_user_input(crs) if isinstance(crs, (str, int)) else crs
+        if crs is None or not crs.is_geographic:
+            return abs(transform.a * transform.e - transform.b * transform.d)
+        r, c = shape_hw[0] // 2, shape_hw[1] // 2
+        x0, y0 = transform * (c, r)
+        x1, y1 = transform * (c + 1, r + 1)
+        project = pyproj.Transformer.from_crs(crs, CRS.from_epsg(cls.get_utm_epsg(x0, y0)), always_xy=True).transform
+        return float(shapely_transform(project, Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1)])).area)
 
     @staticmethod
     def get_utm_epsg(lon: float, lat: float) -> int:
@@ -58,7 +76,9 @@ class GeospatialVectorizer:
         transform: Affine,
         crs: Any,
         t1_bands: Optional[np.ndarray] = None,
-        t2_bands: Optional[np.ndarray] = None
+        t2_bands: Optional[np.ndarray] = None,
+        mode: str = "encroachment",
+        threshold_map: Optional[np.ndarray] = None
     ) -> gpd.GeoDataFrame:
         """
         Converts a continuous change probability heatmap into an attributed GeoDataFrame.
@@ -69,12 +89,17 @@ class GeospatialVectorizer:
             crs: CRS of the input raster
             t1_bands: Optional (C, H, W) bands for spectral analysis
             t2_bands: Optional (C, H, W) bands for spectral analysis
+            mode: severity mode for the primary tier columns ("encroachment" | "disaster");
+                  tier_<mode> / score_<mode> are filled for both
+            threshold_map: optional (H, W) per-pixel probability threshold, e.g. lower inside protected
+                  zones (recall-first); defaults to prob_threshold everywhere
 
         Returns:
             GeoDataFrame containing clean, attributed vector polygons.
         """
         h, w = prob_map.shape
-        raw_binary = (prob_map >= self.prob_threshold).astype(np.uint8)
+        thr = self.prob_threshold if threshold_map is None else threshold_map
+        raw_binary = (prob_map >= thr).astype(np.uint8)
 
         # 1. Morphological Cleaning
         selem = disk(self.morphology_radius)
@@ -96,6 +121,9 @@ class GeospatialVectorizer:
             raster_crs = crs
 
         is_geographic = raster_crs.is_geographic if raster_crs else True
+        pixel_area = self.pixel_area_sqm(transform, raster_crs, (h, w))
+        gsd = float(np.sqrt(pixel_area))
+        min_area = self.min_area_sqm if self.min_area_sqm is not None else self.min_area_px * pixel_area
         # centroid_lon/lat are always WGS84, even when the raster is projected (e.g. UTM)
         to_wgs84 = None if is_geographic else pyproj.Transformer.from_crs(raster_crs, CRS.from_epsg(4326), always_xy=True).transform
 
@@ -141,7 +169,7 @@ class GeospatialVectorizer:
                 perimeter_m = float(geom_simplified.length)
 
             # Minimum Area Pruning
-            if area_sqm < self.min_area_sqm:
+            if area_sqm < min_area:
                 continue
 
             # 5. Polsby-Popper Compactness Score: 4 * pi * Area / Perimeter^2
@@ -150,8 +178,11 @@ class GeospatialVectorizer:
             else:
                 compactness = 0.0
 
-            # Discard boundary registration slithers
-            if compactness < self.min_compactness and area_sqm < 80.0:
+            # Discard registration-jitter slivers: thin edge artefacts along roads / roofs
+            # (mean width = 2·area/perimeter, compared in pixels so it behaves the same at any resolution)
+            if perimeter_m > 0 and 2.0 * area_sqm / perimeter_m < self.min_width_px * gsd:
+                continue
+            if compactness < self.min_compactness and area_sqm < 8 * pixel_area:
                 continue
 
             # 6. Mean Change Probability Magnitude inside Polygon
@@ -167,7 +198,10 @@ class GeospatialVectorizer:
             r_max = min(h, int(np.ceil(row_max)))
 
             sub_prob = prob_map[r_min:r_max, c_min:c_max]
-            sub_bin = clean_binary[r_min:r_max, c_min:c_max]
+            # this polygon's own pixels: its bbox window can contain neighbouring polygons
+            own = geometry_mask([geom], out_shape=(r_max - r_min, c_max - c_min),
+                                transform=transform * Affine.translation(c_min, r_min), invert=True)
+            sub_bin = (clean_binary[r_min:r_max, c_min:c_max] == 1) & own
             if np.any(sub_bin == 1):
                 magnitude = float(np.mean(sub_prob[sub_bin == 1]))
             else:
@@ -185,11 +219,8 @@ class GeospatialVectorizer:
                 sem_summary = "High-confidence structural change detected."
 
             # 8. Multi-Factor Severity Scoring
-            sev = SeverityScorer.compute_severity(
-                area_sqm=area_sqm,
-                magnitude=magnitude,
-                change_type=change_type
-            )
+            sev = SeverityScorer.compute_all_modes(area_sqm, magnitude, change_type,
+                                                   pixel_area_sqm=pixel_area, primary_mode=mode)
 
             feature_id = f"CHG_{feat_counter:04d}"
             feat_counter += 1
@@ -202,6 +233,11 @@ class GeospatialVectorizer:
                 "color_hex": sev["color_hex"],
                 "composite_score": sev["composite_score"],
                 "action_priority": sev["action_priority"],
+                **{k: sev[k] for k in sev if k.startswith(("tier_", "score_"))},
+                "norm_area": sev["norm_area"],
+                "exposure_mult": sev["exposure_mult"],
+                "pixel_area_sqm": round(pixel_area, 4),
+                "severity_mode": mode,
                 "change_type": change_type,
                 "summary": sem_summary,
                 "compactness": round(compactness, 3),

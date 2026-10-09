@@ -15,18 +15,16 @@ from src.data.dataset_builder import DatasetBuilder
 def main():
     builder = DatasetBuilder(base_dir=".")
     
-    print("\n--- 1. Processing OSCD Mumbai (Sentinel-2 Multispectral) ---")
-    try:
-        mumbai_meta = builder.prepare_oscd_city("mumbai")
-    except Exception as e:
-        print(f"Error processing Mumbai: {e}")
+    print("\n--- 1. Processing OSCD cities (Sentinel-2 Multispectral) ---")
+    oscd = "Onera Satellite Change Detection/images/Onera Satellite Change Detection dataset - Images"
+    for city in sorted(c for c in os.listdir(oscd) if os.path.isdir(os.path.join(oscd, c))):
+        try:
+            builder.prepare_oscd_city(city)
+        except Exception as e:
+            print(f"Error processing {city}: {e}")
 
     print("\n--- 2. Processing LEVIR-CD Benchmark Samples (0.5m High-Res) ---")
-    samples = [
-        "test_2_0000_0000.png",
-        "test_2_0000_0512.png",
-        "test_77_0512_0256.png"
-    ]
+    samples = sorted(f for f in os.listdir("data/raw/levir/label") if f.startswith("test_"))
     for s in samples:
         try:
             builder.prepare_levir_sample(s)

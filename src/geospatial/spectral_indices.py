@@ -11,6 +11,8 @@ Computes:
 from typing import Tuple, Dict, Any
 import numpy as np
 
+NDBI_RISE = 0.10   # minimum ΔNDBI to call a change built-up
+
 
 class SpectralClassifier:
     """Computes remote sensing spectral indices and classifies polygon change semantics."""
@@ -58,7 +60,7 @@ class SpectralClassifier:
             mask: (H, W) boolean mask for the polygon
 
         Returns:
-            dict containing change_type, d_ndvi, d_ndwi, and explanation
+            dict containing change_type, d_ndvi, d_ndwi, d_ndbi (None without SWIR), and explanation
         """
         if not np.any(mask):
             return {
@@ -73,32 +75,58 @@ class SpectralClassifier:
         t2_bands = t2_bands.astype(np.float32)
         c = t1_bands.shape[0]
 
-        # Case 1: Multispectral with NIR (e.g. Sentinel-2 OSCD: Red=0, Green=1, Blue=2, NIR=3)
+        d_ndbi = d_nbr = None
+        # Case 1: Multispectral (reflectance; see GeoTIFFProcessor.load_reflectance).
+        # Band order: Red=0, Green=1, Blue=2, NIR=3, optional SWIR16 (B11)=4, SWIR22 (B12)=5.
         if c >= 4:
-            r1, g1, b1, nir1 = t1_bands[0][mask], t1_bands[1][mask], t1_bands[2][mask], t1_bands[3][mask]
-            r2, g2, b2, nir2 = t2_bands[0][mask], t2_bands[1][mask], t2_bands[2][mask], t2_bands[3][mask]
+            band = lambda t, i: t[i][mask]
+            nd = lambda a, b: float(np.mean((a - b) / (a + b + 1e-6)))
+            idx = lambda t, i, j: nd(band(t, i), band(t, j))
+            d_ndvi = idx(t2_bands, 3, 0) - idx(t1_bands, 3, 0)
+            # water: MNDWI (green vs SWIR) when SWIR exists, McFeeters NDWI (green vs NIR) otherwise
+            wi_b = 4 if c >= 5 else 3
+            wi1, wi2 = idx(t1_bands, 1, wi_b), idx(t2_bands, 1, wi_b)
+            d_ndwi = wi2 - wi1
+            wi_name = "MNDWI" if c >= 5 else "NDWI"
+            if c >= 5:
+                d_ndbi = idx(t2_bands, 4, 3) - idx(t1_bands, 4, 3)
+            if c >= 6:
+                d_nbr = idx(t2_bands, 3, 5) - idx(t1_bands, 3, 5)
+            vis = lambda t: float(np.mean([band(t, i).mean() for i in range(3)]))
+            built_up = d_ndbi is not None and d_ndbi > NDBI_RISE
 
-            ndvi1 = np.mean((nir1.astype(np.float32) - r1.astype(np.float32)) / (nir1 + r1 + 1e-6))
-            ndvi2 = np.mean((nir2.astype(np.float32) - r2.astype(np.float32)) / (nir2 + r2 + 1e-6))
-            d_ndvi = float(ndvi2 - ndvi1)
-
-            ndwi1 = np.mean((g1.astype(np.float32) - nir1.astype(np.float32)) / (g1 + nir1 + 1e-6))
-            ndwi2 = np.mean((g2.astype(np.float32) - nir2.astype(np.float32)) / (g2 + nir2 + 1e-6))
-            d_ndwi = float(ndwi2 - ndwi1)
-
-            # Heuristic decision tree for semantic labeling
-            if d_ndwi > 0.20:
-                change_type = "Water / Flood Inundation"
-                summary = f"Significant increase in surface water moisture (ΔNDWI = {d_ndwi:+.2f})."
+            # Rule table, Ideation Baseline §5.2. NDBI alone confuses built-up with bare soil, and dry-season
+            # browning lowers NDVI / raises NDBI like construction on green land, so the labels say what the
+            # evidence supports. ponytail: fixed thresholds; calibrate against labelled change per region.
+            if d_ndwi > 0.20 and wi2 > 0.0:       # the water index also rises when vegetation becomes concrete,
+                change_type = "Water / Flood Inundation"   # so it must actually be water at T2
+                summary = f"Surface water appeared ({wi_name}: {wi1:+.2f} → {wi2:+.2f})."
+            elif wi1 > 0.0 and d_ndwi < -0.20 and built_up:
+                change_type = "Water-body Encroachment"
+                summary = f"Water at T1 replaced by built-up surface (Δ{wi_name} = {d_ndwi:+.2f}, ΔNDBI = {d_ndbi:+.2f})."
+            elif d_nbr is not None and d_nbr < -0.25 and vis(t2_bands) <= vis(t1_bands):
+                change_type = "Burn Scar"           # burnt ground darkens; clearing / construction brightens
+                summary = f"Burn ratio dropped and the surface darkened (ΔNBR = {d_nbr:+.2f})."
+            elif built_up and abs(d_ndvi) <= 0.15:
+                change_type = "New Built-up Surface"
+                summary = f"Built-up index rose with little vegetation change (ΔNDBI = {d_ndbi:+.2f}, ΔNDVI = {d_ndvi:+.2f})."
+            elif built_up and d_ndvi < -0.15:
+                change_type = "Vegetation Cleared / Possible Construction"
+                summary = (f"Vegetation lost and built-up index rose (ΔNDVI = {d_ndvi:+.2f}, ΔNDBI = {d_ndbi:+.2f}): "
+                           "new construction or bare / dried ground. Verify on site.")
+            elif d_ndvi < -0.15 and d_ndbi is not None:
+                change_type = "Seasonal Vegetation Change"   # phenology rule: NDVI-only change, no built-up signal
+                summary = f"Vegetation dropped with no built-up signal, likely seasonal (ΔNDVI = {d_ndvi:+.2f}, ΔNDBI = {d_ndbi:+.2f})."
             elif d_ndvi < -0.15:
-                change_type = "Vegetation Loss / Clearing"
-                summary = f"Vegetation canopy removal or loss detected (ΔNDVI = {d_ndvi:+.2f})."
+                change_type = "Vegetation Loss / Clearing"   # no SWIR: cannot tell seasonal from clearing
+                summary = f"Vegetation canopy removal or loss detected (ΔNDVI = {d_ndvi:+.2f}; no SWIR band to rule out construction)."
             elif d_ndvi > 0.20:
                 change_type = "Vegetation Regrowth"
-                summary = f"Seasonal vegetation greening (ΔNDVI = {d_ndvi:+.2f})."
+                summary = f"Vegetation greening (ΔNDVI = {d_ndvi:+.2f})."
             else:
-                change_type = "Built-up Structural Encroachment"
-                summary = f"Impervious structural surface change (Stable vegetation index: ΔNDVI = {d_ndvi:+.2f})."
+                change_type = "Ground Disturbance"
+                summary = (f"Change with no dominant index (ΔNDVI = {d_ndvi:+.2f}, Δ{wi_name} = {d_ndwi:+.2f}"
+                           + (f", ΔNDBI = {d_ndbi:+.2f})." if d_ndbi is not None else "; no SWIR band for NDBI)."))
 
         # Case 2: RGB Only (e.g. LEVIR-CD high-res)
         else:
@@ -113,15 +141,45 @@ class SpectralClassifier:
             d_ndwi = 0.0
 
             if abs(d_bright) > 20:
-                change_type = "New Building / Structural Encroachment"
+                change_type = "New Building / Structure"
                 summary = f"High-contrast physical building modification (Brightness drift = {d_bright:+.1f})."
             else:
-                change_type = "Landcover Disturbance"
+                change_type = "Ground Disturbance"
                 summary = f"Textural ground surface disturbance (Brightness drift = {d_bright:+.1f})."
 
         return {
             "change_type": change_type,
             "d_ndvi": round(d_ndvi, 3),
             "d_ndwi": round(d_ndwi, 3),
+            "d_ndbi": round(d_ndbi, 3) if d_ndbi is not None else None,
+            "d_nbr": round(d_nbr, 3) if d_nbr is not None else None,
             "summary": summary
         }
+
+
+if __name__ == "__main__":
+    m = np.ones((4, 4), bool)
+    # reflectance x10000: Red, Green, Blue, NIR, SWIR16, SWIR22
+    t = lambda *v: np.stack([np.full((4, 4), x, np.float32) for x in v])
+    veg = t(500, 700, 400, 3500, 1800, 900)
+    built = t(1600, 1500, 1400, 2000, 2600, 2300)
+    bare = t(1800, 1500, 1200, 2600, 2400, 2200)
+    dry = t(800, 850, 550, 2700, 1400, 700)         # leaf senescence: NDVI down, NDBI flat. (Browning that also
+                                                    # raises NDBI lands in "Cleared / Possible Construction".)
+    water = t(300, 600, 500, 250, 100, 60)
+    burnt = t(400, 380, 300, 900, 1600, 1500)       # dark, NIR collapsed, SWIR22 up
+    cls = lambda a, b: SpectralClassifier.classify_polygon_change(a, b, m)["change_type"]
+    cases = [
+        (bare, built, "New Built-up Surface"),
+        (veg, built, "Vegetation Cleared / Possible Construction"),
+        (veg, dry, "Seasonal Vegetation Change"),
+        (veg, water, "Water / Flood Inundation"),
+        (water, built, "Water-body Encroachment"),
+        (veg, burnt, "Burn Scar"),
+        (built, veg, "Vegetation Regrowth"),
+        (veg, veg * 1.01, "Ground Disturbance"),
+        (veg[:4], built[:4], "Vegetation Loss / Clearing"),       # no SWIR: no built-up / seasonal claim
+    ]
+    for a, b, want in cases:
+        assert cls(a, b) == want, (want, cls(a, b), SpectralClassifier.classify_polygon_change(a, b, m))
+    print(f"spectral self-check ok ({len(cases)} rules)")

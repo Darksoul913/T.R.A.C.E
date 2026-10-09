@@ -58,8 +58,8 @@ class CAPAlertExporter:
         )
         ET.SubElement(info, "description").text = desc
         ET.SubElement(info, "instruction").text = (
-            "Field officers to inspect coordinates immediately. "
-            "Verify structural integrity or illegal encroachment before taking regulatory action."
+            "Field officers to verify on site. Satellite encroachment flags are screening results: "
+            "check against Development Plan and CRZ maps before any regulatory action."
         )
 
         # Area block with polygon coordinates

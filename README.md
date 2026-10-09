@@ -24,31 +24,42 @@ Satellite providers routinely deliver pre- and post-event imagery within hours o
 1. **Bitemporal Transformer (BIT)**: ResNet-18 tokenizer + Cross-temporal Transformer attention (verified **$94.7\%$ validation accuracy** on LEVIR-CD).
 2. **Naive NDVI Difference Baseline Comparator**: Live side-by-side toggle proving our false alarm rejection over naive thresholding.
 3. **Tiled Sliding-Window Inference with Overlap**: Slices arbitrarily large GeoTIFFs ($1024 \times 1024$, $2048 \times 2048$) with 2D Hann window blending to eliminate edge seams.
-4. **Radiometric Normalization**: Channel-wise histogram matching (`skimage.exposure.match_histograms`) of $T_2 \to T_1$ for instant sun-angle and haze invariance.
-5. **Cloud & Shadow Masking**: Automated spectral masking of cloud shadows and atmospheric interference.
-6. **Semantic Change-Type Labelling**: Attributes each polygon with $\Delta\text{NDBI}$ (Built-up Encroachment), $\Delta\text{NDVI}$ (Vegetation Loss), or $\Delta\text{NDWI}$ (Water / Flood Inundation).
+4. **Input Harmonisation**: grid alignment, phase-correlation registration of $T_1$ onto $T_2$ (1–3 px), and optional radiometric normalisation (global histogram or stable-pixel). The stress test showed both normalisations lower F1 on LEVIR-CD, so the default is none.
+5. **Cloud & Shadow Masking**: Sentinel-2 SCL classes (L2A) or spectral tests (L1C); masked pixels form an explicit **unobservable** layer, never "no change".
+6. **Semantic Change-Type Labelling**: rule table on reflectance ($\Delta$NDBI, $\Delta$MNDWI, $\Delta$NDVI, $\Delta$NBR): new built-up, cleared / possible construction, water-body encroachment, flood, burn scar, seasonal vegetation (phenology rule), ground disturbance.
 7. **Clean Geospatial Vectorization**: Morphological opening/closing, Polsby-Popper compactness filtering (removes boundary slithers), Shapely simplification, and local UTM reprojection for true metric area ($m^2$).
-8. **Multi-Factor Severity Scoring**: 4-Tier Matrix (Critical, High, Moderate, Minor) based on area, confidence, and change type.
+8. **Multi-Factor Severity Scoring**: score = resolution-aware area × magnitude × type weight × exposure, in Encroachment and Disaster modes, banded Critical / High / Medium / Low.
 9. **Multi-Format GIS Export**: Direct download of OGC GeoPackage (`.gpkg`) and GeoJSON (`.geojson`).
 10. **Interactive Web Console**: Split-screen curtain swipe map (Folium / Leaflet) with filterable attribute table and click-to-zoom inspector.
 
 ### Headline Features (The Winning Edge)
-11. **OSM Asset Exposure & Encroachment Overlay**: Intersects polygons with OpenStreetMap (Overpass API) to count nearby hospitals/schools and detect illegal construction in nala/wetland buffer zones.
-12. **Auto-Generated 1-Page Situation Report (SitRep PDF)**: Generates an executive emergency brief ready for the District Magistrate / DDMA Commissioner.
+11. **OSM Asset Exposure & Encroachment Overlay**: hospitals / schools within 500 m raise priority; new construction near tidal water (CRZ 50 m), nalas (DCPR 3–6 m, when resolvable) or inside parks / forests is flagged as a *possible* encroachment to verify, never as a legal finding.
+12. **Missed-Encroachment Defence**: slow built-up creep over a yearly Sentinel-2 series, precursor flags (cleared plots, new tracks) and recall-first thresholds inside protected zones.
+13. **Officer Case Workflow**: New → Under review → Field verification → Confirmed → Reported → Resolved (or Dismissed), audit log, verdict export; CAP alerts gated on verification; the citizen lookup shows verified cases only.
+14. **Auto-Generated 1-Page Situation Report (SitRep PDF)**: Generates an executive emergency brief ready for the District Magistrate / DDMA Commissioner.
 
 ### Stretch Goals
-13. **Robustness Stress-Testing Module**: Injected illumination stress tests.
-14. **Quantitative Benchmark Metrics Panel**: Live F1, IoU, and False Alarm Rate (FAR) validation panel.
+15. **Robustness Stress-Testing Module**: brightness ±15/30%, cast shadows and misregistration; normalisation options compared.
+16. **Quantitative Benchmark Metrics Panel**: pixel and object metrics, misses by object size, false alarms per 100 km², creep-vs-sudden, OSCD, runtime.
 
 ---
 
-## 📊 Benchmark Evaluation Results (LEVIR-CD Test Split)
+## 📊 Benchmark Evaluation Results
 
-| Metric | Naive Spectral Baseline | ChangeIntel AI Engine | Operational Impact |
-| :--- | :---: | :---: | :---: |
-| **F1-Score / Dice** | $28.6\%$ | **$86.4\%$** | **$+201.6\%$ gain** |
-| **IoU (Intersection/Union)** | $16.8\%$ | **$76.1\%$** | **$+353.0\%$ gain** |
-| **False Alarm Rate (FAR)** | $42.9\%$ | **$3.6\%$** | **$-91.6\%$ reduction** |
+LEVIR-CD official test split: 128 pairs, 33.5 km² at 0.5 m, pixel counts pooled (`src/models/evaluate.py`).
+
+| Metric | Naive Spectral Baseline | ChangeIntel (BIT) |
+| :--- | :---: | :---: |
+| **F1-Score** | 10.5% | **89.5%** |
+| **IoU** | 5.6% | **81.0%** |
+| **False alarms per 100 km² of unchanged land** | 24.0 km² | **0.55 km²** |
+| **Objects found (≥ 50% covered), 7,027 buildings** | 19.4% | **93.9%** |
+| **…of which < 400 m²** | 18.4% | **93.9%** |
+
+- Slow change (synthetic 4-step sequences): comparing only consecutive images finds 33% of objects, anchoring to the first image 77%.
+- Runtime: 0.74 s per km² at 0.5 m (5.4 Mpx/s) on Apple M5 Max.
+- Out of domain: on 14 labelled OSCD Sentinel-2 cities the model scores F1 ≈ 0 (trained on 0.5 m aerial imagery); naive NDVI 7.7%, index rules 7.8%. A Mumbai post-monsoon vs dry-season pair shows naive NDVI flagging 80% of the land.
+- Stress test (`src/models/stress_test.py`): neither global histogram matching nor stable-pixel normalisation helps under ±30% brightness or cast shadows, so the pipeline uses none.
 
 ---
 
@@ -75,13 +86,37 @@ pip install -r requirements.txt
 
 ### 3. Generate Standardized GeoTIFF Test Pairs
 ```bash
-python scripts/build_data.py
+python scripts/build_data.py     # OSCD Mumbai (display + reflectance + labels + cloud mask) and local LEVIR tiles
+python scripts/fetch_s2.py       # ~8 min: Sentinel-2 L2A from Earth Search (public STAC) for data/watch_areas.json
+```
+`fetch_s2.py` writes the `mumbai_s2` change pair (2019 → 2025, real SCL cloud mask) to `data/geotiff/`, and a
+2017–2025 dry-season series plus a seasonal no-change pair to `data/raw/s2/` (git-ignored) for creep detection
+and the seasonal false-alarm benchmark.
+
+Self-checks (plain asserts):
+```bash
+python tests/test_synthetic.py                 # 100x100 px change -> one polygon, area ±1%, right centroid
+python -m src.data.harmonise                   # shift correction, stable-pixel normalisation
+python src/geospatial/spectral_indices.py      # change-type rule table
+python -m src.geospatial.severity              # severity formula and modes
+python -m src.geospatial.osm_overlay           # CRZ / nala / protected-zone screening
+python -m src.geospatial.creep                 # slow creep, precursors, recall-first zones
 ```
 
-### 4. Run Quantitative Benchmark Evaluation
+### 4. Run Quantitative Benchmark Evaluation & Stress Test
+Uses the official LEVIR-CD test split (128 pairs) if it is in `data/raw/levir_cd_test/` (`A/`, `B/`, `label/`), otherwise the local GeoTIFF tiles:
 ```bash
-python src/models/evaluate.py
+mkdir -p data/raw/levir_cd_test && curl -L -o data/raw/levir_cd_test/test.zip \
+  https://huggingface.co/datasets/satellite-image-deep-learning/LEVIR-CD/resolve/6a6bb0a5b389403d81c05e33bf08bc0b9e5f13a6/test.zip
+(cd data/raw/levir_cd_test && unzip -q test.zip && rm test.zip)   # 496 MB, md5 07d5dd89e46f5c1359e2eca746989ed9
+
+python src/models/evaluate.py      # ~10 min -> data/outputs/benchmark_metrics.json
+python src/models/stress_test.py   # ~35 min -> data/outputs/stress_test.json
 ```
+`evaluate.py` reports pixel metrics, object recall by size (missed changes), false alarms per 100 km², a
+creep-vs-sudden miss test, runtime, the 14 labelled OSCD cities (with a training-free index-rule detector) and the
+seasonal no-change pair. `stress_test.py` compares radiometric normalisation options under brightness / shadow
+perturbations and checks misregistration.
 
 ### 5. Build the Static Console (`web/index.html`)
 ```bash
@@ -89,6 +124,14 @@ python src/models/evaluate.py
 python scripts/build_frontend_light.py            # inlines scenes into a self-contained web/index.html
 ```
 Sectors are configured in `SECTORS` at the top of `scripts/build_scenes.py`.
+
+OSM exposure and the citizen pincode / area lookup read committed snapshots in `data/osm/`, so the build works offline.
+To regenerate them (e.g. for a new sector), delete the sector's files in `data/osm/` and provide the Geofabrik extract:
+```bash
+mkdir -p data/raw/osm && curl -L -o data/raw/osm/western-zone-latest.osm.pbf \
+  https://download.geofabrik.de/asia/india/western-zone-latest.osm.pbf   # ~220 MB
+```
+Without a snapshot, the overlay falls back to the live Overpass API, then to "Not assessed".
 
 ### 6. Launch Interactive Web Console (Streamlit)
 ```bash
@@ -105,7 +148,9 @@ HFD/
 ├── requirements.txt          # Python dependencies
 ├── checkpoints/              # Pretrained model weights (BIT_LEVIR_best.pt - 94.7% acc)
 ├── data/
-│   ├── raw/                  # Downloaded raw datasets (LEVIR-CD, OSCD)
+│   ├── raw/                  # Downloaded raw data (LEVIR-CD test, OSM extract, Sentinel-2 series), git-ignored
+│   ├── osm/                  # OSM exposure snapshots + place / pincode gazetteers (offline)
+│   ├── watch_areas.json      # Sentinel-2 areas, change pair, yearly series windows
 │   ├── geotiff/              # Standardized orthorectified GeoTIFF test pairs
 │   └── outputs/              # Exported GeoPackage, GeoJSON, CAP XML, and SitRep PDFs
 ├── src/
