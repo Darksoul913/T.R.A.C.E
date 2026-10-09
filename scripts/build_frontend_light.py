@@ -761,9 +761,16 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
         <div class="ctl tr"><span class="chip">After<span class="mono" id="d2"></span></span></div>
-        <div class="ctl tc"><div class="seg" role="group" aria-label="Imagery view">
-          <button data-act="view:before">Before</button><button data-act="view:swipe">Swipe</button><button data-act="view:after">After</button>
-        </div></div>
+        <div class="ctl tc" style="display:flex;align-items:center;gap:8px">
+          <div class="seg" role="group" aria-label="Imagery view">
+            <button data-act="view:before">Before</button><button data-act="view:swipe">Swipe</button><button data-act="view:after">After</button>
+          </div>
+          <div class="seg" style="display:flex;align-items:center;gap:6px;padding:3px 10px;background:var(--card);border:1px solid var(--line);border-radius:100px;font-size:11px;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.06)">
+            <span style="color:var(--muted);white-space:nowrap">Fill</span>
+            <input type="range" id="fillDirect" min="0" max="100" value="35" aria-label="Polygon fill opacity" style="width:70px;cursor:pointer">
+            <span class="mono" id="fillVal" style="font-size:10px;min-width:24px;color:var(--ink)">35%</span>
+          </div>
+        </div>
         <div class="banner" id="banner"></div>
         <div class="ctl bl">
           <div class="scalebar"><i id="sbBar"></i><span id="sbTxt"></span></div>
@@ -781,7 +788,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
         <div class="lay-pop ctl" id="layPop" hidden>
           <h3>Map layers</h3>
           <div class="legend" id="legend"></div>
-          <label class="slider">Fill <input type="range" id="fill" min="0" max="80" value="35" aria-label="Polygon fill opacity"></label>
+          <label class="slider" style="display:flex;align-items:center;justify-content:space-between;margin-top:6px"><span>Fill opacity: <b id="fillPopVal" class="mono">35%</b></span><input type="range" id="fill" min="0" max="100" value="35" aria-label="Polygon fill opacity" style="width:85px"></label>
         </div>
         <div class="tip" id="tip"></div>
         <section class="overview ctl" id="overview" hidden aria-labelledby="ovSit"></section>
@@ -1196,7 +1203,7 @@ async function fly(th, dir){
 
   const finishIn = () => {
     dash.classList.add('on'); S.stage = 'dash';
-    showOverview(true);   // #41: the overview opens where the globe lands
+    showOverview(false);  // default view does not overlap overview over tile
     setTimeout(() => { tile.style.opacity = 0; Globe.show(false); cv.style.filter = ''; cv.style.opacity = ''; }, 460);
     flying = false;
   };
@@ -2055,7 +2062,7 @@ document.addEventListener('click', e => {
   switch (k) {
     case 'fly': fly(v in D.scenes ? v : KEYS[0], 1); break;
     case 'back': if (S.stage === 'dash') { showOverview(false); fly(S.th, -1); } break;
-    case 'th': if (v !== S.th) { loadTheater(v).then(() => { showOverview(true); }); } break;
+    case 'th': if (v !== S.th) { loadTheater(v).then(() => { showOverview(false); }); } break;
     case 'mode': S.mode = v; renderHeader(); renderMission(); renderLegend(); renderNaive(); renderMap(); renderTT(); break;
     case 'sev': S.sev = v; applySev(); renderAll(); toast(v === 'disaster' && !sc().event ? 'Disaster mode re-ranks the existing changes (not an event area)' : `Ranked for ${SEV_MODES[v].toLowerCase()} work`); break;
     case 'lang': S.lang = v; renderHeader(); renderAdvisory(); renderLookup(); break;
@@ -2117,7 +2124,7 @@ document.addEventListener('change', e => {
   if (e.target.id === 'role') { PROFILE.role = e.target.value; store.set('ci-profile', PROFILE); renderCard(); renderViews(); toast(`Acting as ${PROFILE.role}`); }
   if (e.target.id === 'actor') { PROFILE.name = e.target.value.trim().slice(0, 60); store.set('ci-profile', PROFILE); renderViews(); }
   if (e.target.id === 'asSel') { $('#asOther').hidden = e.target.value !== '__other'; if (e.target.value === '__other') $('#asOther').focus(); }
-  if (e.target.id === 'ovArea' && e.target.value !== S.th) loadTheater(e.target.value).then(() => showOverview(true));
+  if (e.target.id === 'ovArea' && e.target.value !== S.th) loadTheater(e.target.value).then(() => showOverview(false));
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'asOther') { e.preventDefault(); doAssign(); } });
 $('#photoIn').addEventListener('change', e => { addPhoto(e.target.files[0]); e.target.value = ''; });
@@ -2131,7 +2138,17 @@ $('#lookup').addEventListener('submit', e => {
   if (S.lk.place && S.lk.nearest !== undefined) select(S.lk.nearest, true);
 });
 $('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); S.listN = LIST_STEP; renderCases(); renderCard(); });
-$('#fill').addEventListener('input', e => $('#vec').style.setProperty('--fill', e.target.value/100));
+function setPolyFill(val) {
+  const v = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
+  $('#vec').style.setProperty('--fill', (v / 100).toFixed(2));
+  const fd = $('#fillDirect'), f = $('#fill'), fv = $('#fillVal'), fp = $('#fillPopVal');
+  if (fd && fd.value != v) fd.value = v;
+  if (f && f.value != v) f.value = v;
+  if (fv) fv.textContent = v + '%';
+  if (fp) fp.textContent = v + '%';
+}
+$('#fill')?.addEventListener('input', e => setPolyFill(e.target.value));
+$('#fillDirect')?.addEventListener('input', e => setPolyFill(e.target.value));
 ['#bench', '#impact'].forEach(id => $(id).addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); }));
 document.addEventListener('click', e => {   // close the layers popover from outside
   const p = $('#layPop');
