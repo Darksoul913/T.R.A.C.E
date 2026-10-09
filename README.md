@@ -1,4 +1,4 @@
-# ChangeIntel 🛰️ — Bi-Temporal Satellite Change Intelligence Engine
+# T.R.A.C.E. 🛰️ — Bi-Temporal Satellite Change Intelligence Engine
 > **GEOAI 04**: Bi-Temporal Satellite Change Detection for Rapid Urban Encroachment & Disaster Impact
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
@@ -14,7 +14,7 @@ Satellite providers routinely deliver pre- and post-event imagery within hours o
 2. **The "Raster Dump Dilemma"**: Academic models output raw, unindexed 2D pixel masks rather than localized, GIS-ready vector polygons loadable into emergency dispatch or QGIS/ArcGIS workflows.
 3. **The 15-Year Planning Blindspot**: Under India's Disaster Management framework, District Disaster Management Plans (DDMPs) must be updated annually, yet they still rely on 2011 Census baselines. Fast-growing peri-urban sprawl in floodplains remains completely unmapped.
 
-**ChangeIntel** is an automated, end-to-end change-intelligence engine that accepts co-registered bi-temporal orthorectified GeoTIFF imagery and extracts **actionable, false-alarm-filtered vector polygons** with **true geodesic metric surface areas ($m^2$)** categorized into **severity tiers**.
+**T.R.A.C.E.** is an automated, end-to-end change-intelligence engine that accepts co-registered bi-temporal orthorectified GeoTIFF imagery and extracts **actionable, false-alarm-filtered vector polygons** with **true geodesic metric surface areas ($m^2$)** categorized into **severity tiers**.
 
 ---
 
