@@ -83,17 +83,19 @@ extra_css = """
 template = template.replace('</style>', extra_css + '\n</style>', 1)
 
 # 2. Add topbar controls: Upload button, Pixel Inspector toggle, Full Report button
-topbar_target = '<div class="seg" role="group" aria-label="Detection engine">'
+topbar_target = '<div class="seg analyst" role="group" aria-label="Detection engine">'
+assert topbar_target in template, "topbar_target not found in template!"
 topbar_replacement = """<div class="seg" role="group" aria-label="Quick workflow">
       <button data-act="open-upload" id="btnTopUpload" style="color:var(--forest);font-weight:700">📤 Upload & Detect</button>
       <button data-act="toggle-pixel" id="btnTopPixel" title="Click anywhere on the map to inspect individual pixels">🎯 Pixel Inspector</button>
       <button data-act="full-report" id="btnTopReport" title="Generate comprehensive multi-page PDF audit report">📑 Full Report (PDF)</button>
     </div>
-    <div class="seg" role="group" aria-label="Detection engine">"""
+    <div class="seg analyst" role="group" aria-label="Detection engine">"""
 template = template.replace(topbar_target, topbar_replacement, 1)
 
 # 3. Add layer overlays (Heatmap, Binary Mask, Cleaned Mask) and crosshair to the map
 map_layer_target = '<div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>'
+assert map_layer_target in template, "map_layer_target not found in template!"
 map_layer_replacement = """<div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
         <div class="layer" id="layProb" style="opacity:0;transition:opacity .2s"><div class="world"><img id="imgProb" alt="Probability Heatmap" draggable="false"></div></div>
         <div class="layer" id="layBin" style="opacity:0;transition:opacity .2s"><div class="world"><img id="imgBin" alt="Binary Mask" draggable="false"></div></div>
@@ -103,6 +105,7 @@ template = template.replace(map_layer_target, map_layer_replacement, 1)
 
 # 4. Add layer toggles in the Layers card
 layers_legend_target = '<div class="legend" id="legend"></div>'
+assert layers_legend_target in template, "layers_legend_target not found in template!"
 layers_legend_replacement = """<div class="legend" id="legend"></div>
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line);font-size:11px;display:flex;flex-direction:column;gap:5px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="chkLayProb"> 🔥 Raw Probability Heatmap</label>
@@ -111,19 +114,12 @@ layers_legend_replacement = """<div class="legend" id="legend"></div>
         </div>"""
 template = template.replace(layers_legend_target, layers_legend_replacement, 1)
 
-# 5. Add Visual Evidence Gallery, 12-Question Auditable Reasoning, and Evidence Table into right Inspector card
-inspector_target = """        <div class="actions">
-          <button class="abtn primary" data-act="focus">Zoom to change</button>
-          <button class="abtn" data-act="copy">Copy coordinates</button>
-        </div>"""
-inspector_replacement = """        <div class="actions">
-          <button class="abtn primary" data-act="focus">Zoom to change</button>
-          <button class="abtn" data-act="copy">Copy coordinates</button>
-        </div>
-        <div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
-          <div class="card-h"><h3>Visual Evidence Crops</h3><span class="mono" id="iCropCount">5 views</span></div>
-          <div class="crops-grid" id="iCropsGrid"></div>
-        </div>
+# 5. Add Visual Evidence Gallery, 12-Question Auditable Reasoning, and Evidence Table into right column
+inspector_target = '<section class="card adv rise" style="--d:4">'
+assert inspector_target in template, "inspector_target not found in template!"
+inspector_replacement = """<section class="card rise" style="--d:3.5" id="cardEvidence" aria-label="Auditable Evidence & Crops">
+        <div class="card-h"><h3>Visual Evidence Crops</h3><span class="mono" id="iCropCount">5 views</span></div>
+        <div class="crops-grid" id="iCropsGrid"></div>
         <div style="margin-top:10px;border-top:1px solid var(--line);padding-top:10px">
           <div class="card-h"><h3>Auditable 12-Question Evidence</h3></div>
           <div id="iQuestionsWrap" style="max-height:240px;overflow:auto;padding-right:4px"></div>
@@ -134,7 +130,9 @@ inspector_replacement = """        <div class="actions">
         </div>
         <div style="margin-top:10px">
           <button class="abtn primary" data-act="poly-report" style="width:100%;font-weight:700">📄 Generate Selected Polygon Report</button>
-        </div>"""
+        </div>
+      </section>
+      <section class="card adv rise" style="--d:4">"""
 template = template.replace(inspector_target, inspector_replacement, 1)
 
 # 6. Add HTML Modals for Upload and Pixel Intelligence before the toast
@@ -1059,6 +1057,9 @@ const _origLoadTheater = loadTheater;
 loadTheater = async function(th) {
   await _origLoadTheater(th);
   renderBundledRasterLayers();
+  updateRasterLayerVisibility();
+  const f = feats()[S.sel];
+  if (f) loadPolygonExtendedDetails(f.id);
 };
 
 // Override DL handlers for live analysis results
@@ -1089,19 +1090,19 @@ DL.sitrep = function() {
   _origDlSitrep();
 };
 
-// Dedicated change event listener for the layer checkboxes
-document.addEventListener('change', e => {
-  const id = e.target && e.target.id;
-  if (id === 'chkLayProb') {
-    const el = $('#layProb');
-    if (el) el.style.opacity = e.target.checked ? '0.85' : '0';
-  } else if (id === 'chkLayBin') {
-    const el = $('#layBin');
-    if (el) el.style.opacity = e.target.checked ? '0.75' : '0';
-  } else if (id === 'chkLayClean') {
-    const el = $('#layClean');
-    if (el) el.style.opacity = e.target.checked ? '0.85' : '0';
-  }
+// Robust and responsive change/input/click listeners for layer checkboxes
+function updateRasterLayerVisibility() {
+  const p = $('#chkLayProb'), b = $('#chkLayBin'), c = $('#chkLayClean');
+  if (p && $('#layProb')) $('#layProb').style.opacity = p.checked ? '0.85' : '0';
+  if (b && $('#layBin')) $('#layBin').style.opacity = b.checked ? '0.75' : '0';
+  if (c && $('#layClean')) $('#layClean').style.opacity = c.checked ? '0.85' : '0';
+}
+['change', 'input', 'click'].forEach(evt => {
+  document.addEventListener(evt, e => {
+    if (e.target && ['chkLayProb', 'chkLayBin', 'chkLayClean'].includes(e.target.id)) {
+      updateRasterLayerVisibility();
+    }
+  });
 });
 
 // Delegated action handlers for buttons
@@ -1119,14 +1120,27 @@ document.addEventListener('click', e => {
   else if (act === 'exec-process') { startProcessing(); }
 });
 
-// Initial raster render after first layout
-setTimeout(renderBundledRasterLayers, 200);
+// Initial raster and extended polygon render after first layout
+setTimeout(() => {
+  renderBundledRasterLayers();
+  updateRasterLayerVisibility();
+  const f = feats()[S.sel];
+  if (f) loadPolygonExtendedDetails(f.id);
+}, 350);
 """
 
+# Read caselogic
+caselogic = (ROOT / 'web/caselogic.js').read_text(encoding='utf-8')
+assert '</script' not in caselogic, "caselogic contains </script"
+assert '/*__CASELOGIC__*/' in template, "/*__CASELOGIC__*/ not found in template!"
+template = template.replace('/*__CASELOGIC__*/', caselogic, 1)
+
 # Insert JS before </script> of main script block
+assert '</script>\n\n<script>\n/* B) burger */' in template, "Burger script split not found in template!"
 template = template.replace('</script>\n\n<script>\n/* B) burger */', js_code_addition + '\n</script>\n\n<script>\n/* B) burger */', 1)
 
 # Compile index.html
+assert '/*__DATA__*/null' in template, "/*__DATA__*/null not found in template!"
 final_html = template.replace('/*__DATA__*/null', json.dumps(DATA, ensure_ascii=False).replace('</', '<\\/'))
 out_path = ROOT / 'web/index.html'
 out_path.write_text(final_html, encoding='utf-8')
