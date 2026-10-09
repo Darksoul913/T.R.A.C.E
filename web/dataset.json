@@ -1,0 +1,1206 @@
+{
+  "mumbai": {
+    "title": "Mumbai Coastal Corridor, MH, India",
+    "sensor": "Sentinel-2 Multispectral (10m GSD)",
+    "t1_date": "November 20, 2015",
+    "t2_date": "April 12, 2017",
+    "coords": "19.0256\u00b0 N - 19.1052\u00b0 N, 72.9016\u00b0 E - 72.9533\u00b0 E",
+    "features": [
+      {
+        "id": "CHG_0001",
+        "tier": "Minor",
+        "color": "#3B82F6",
+        "area_sqm": 803.1,
+        "magnitude": 0.486,
+        "type": "Water / Flood Inundation",
+        "summary": "Significant increase in surface water moisture (\u0394NDWI = +0.22).",
+        "priority": "Priority 4 - Low Impact / Routine Audit",
+        "exposure": "Standard Residential / Industrial Sector",
+        "violation": "No Immediate Wetland Violation",
+        "lat": 19.050166,
+        "lon": 72.952133,
+        "cx": 97.67,
+        "cy": 69.17,
+        "pts": [
+          [
+            97.49,
+            69.0
+          ],
+          [
+            97.49,
+            69.11
+          ],
+          [
+            97.31,
+            69.11
+          ],
+          [
+            97.31,
+            69.23
+          ],
+          [
+            97.49,
+            69.23
+          ],
+          [
+            97.49,
+            69.35
+          ],
+          [
+            97.85,
+            69.35
+          ],
+          [
+            97.85,
+            69.23
+          ],
+          [
+            98.03,
+            69.23
+          ],
+          [
+            98.03,
+            69.11
+          ],
+          [
+            97.85,
+            69.11
+          ],
+          [
+            97.85,
+            69.0
+          ],
+          [
+            97.49,
+            69.0
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0002",
+        "tier": "Minor",
+        "color": "#3B82F6",
+        "area_sqm": 1606.5,
+        "magnitude": 0.478,
+        "type": "Vegetation Loss / Clearing",
+        "summary": "Vegetation canopy removal or loss detected (\u0394NDVI = -0.51).",
+        "priority": "Priority 4 - Low Impact / Routine Audit",
+        "exposure": "Standard Residential / Industrial Sector",
+        "violation": "No Immediate Wetland Violation",
+        "lat": 19.028068,
+        "lon": 72.91345,
+        "cx": 22.8,
+        "cy": 96.91,
+        "pts": [
+          [
+            22.62,
+            96.62
+          ],
+          [
+            22.62,
+            96.74
+          ],
+          [
+            22.44,
+            96.74
+          ],
+          [
+            22.44,
+            97.09
+          ],
+          [
+            22.62,
+            97.09
+          ],
+          [
+            22.62,
+            97.2
+          ],
+          [
+            22.98,
+            97.2
+          ],
+          [
+            22.98,
+            97.09
+          ],
+          [
+            23.16,
+            97.09
+          ],
+          [
+            23.16,
+            96.74
+          ],
+          [
+            22.98,
+            96.74
+          ],
+          [
+            22.98,
+            96.62
+          ],
+          [
+            22.62,
+            96.62
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0003",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 65264.8,
+        "magnitude": 0.681,
+        "type": "Water / Flood Inundation",
+        "summary": "Significant increase in surface water moisture (\u0394NDWI = +2596939.92).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Standard Residential / Industrial Sector",
+        "violation": "No Immediate Wetland Violation",
+        "lat": 19.026383,
+        "lon": 72.911163,
+        "cx": 18.38,
+        "cy": 99.03,
+        "pts": [
+          [
+            15.44,
+            97.32
+          ],
+          [
+            15.44,
+            97.44
+          ],
+          [
+            15.26,
+            97.44
+          ],
+          [
+            15.26,
+            97.55
+          ],
+          [
+            15.08,
+            97.55
+          ],
+          [
+            15.08,
+            97.79
+          ],
+          [
+            14.9,
+            97.79
+          ],
+          [
+            14.9,
+            98.02
+          ],
+          [
+            14.72,
+            98.02
+          ],
+          [
+            14.72,
+            98.72
+          ],
+          [
+            14.9,
+            98.72
+          ],
+          [
+            14.9,
+            98.95
+          ],
+          [
+            15.08,
+            98.95
+          ],
+          [
+            15.08,
+            99.42
+          ],
+          [
+            15.26,
+            99.42
+          ],
+          [
+            15.26,
+            100.0
+          ],
+          [
+            18.49,
+            100.0
+          ],
+          [
+            18.49,
+            99.77
+          ],
+          [
+            18.67,
+            99.77
+          ],
+          [
+            18.67,
+            99.65
+          ],
+          [
+            18.85,
+            99.65
+          ],
+          [
+            18.85,
+            99.77
+          ],
+          [
+            19.03,
+            99.77
+          ],
+          [
+            19.03,
+            99.88
+          ],
+          [
+            19.21,
+            99.88
+          ],
+          [
+            19.21,
+            100.0
+          ],
+          [
+            22.26,
+            100.0
+          ],
+          [
+            22.26,
+            99.88
+          ],
+          [
+            22.44,
+            99.88
+          ],
+          [
+            22.44,
+            99.53
+          ],
+          [
+            22.62,
+            99.53
+          ],
+          [
+            22.62,
+            99.42
+          ],
+          [
+            22.8,
+            99.42
+          ],
+          [
+            22.8,
+            99.3
+          ],
+          [
+            22.98,
+            99.3
+          ],
+          [
+            22.98,
+            99.18
+          ],
+          [
+            23.16,
+            99.18
+          ],
+          [
+            23.16,
+            98.83
+          ],
+          [
+            22.98,
+            98.83
+          ],
+          [
+            22.98,
+            98.72
+          ],
+          [
+            21.18,
+            98.72
+          ],
+          [
+            21.18,
+            98.6
+          ],
+          [
+            20.83,
+            98.6
+          ],
+          [
+            20.83,
+            98.48
+          ],
+          [
+            20.47,
+            98.48
+          ],
+          [
+            20.47,
+            98.37
+          ],
+          [
+            18.67,
+            98.37
+          ],
+          [
+            18.67,
+            98.25
+          ],
+          [
+            17.41,
+            98.25
+          ],
+          [
+            17.41,
+            98.14
+          ],
+          [
+            16.88,
+            98.14
+          ],
+          [
+            16.88,
+            98.02
+          ],
+          [
+            16.52,
+            98.02
+          ],
+          [
+            16.52,
+            97.9
+          ],
+          [
+            16.34,
+            97.9
+          ],
+          [
+            16.34,
+            97.55
+          ],
+          [
+            16.16,
+            97.55
+          ],
+          [
+            16.16,
+            97.44
+          ],
+          [
+            15.98,
+            97.44
+          ],
+          [
+            15.98,
+            97.32
+          ],
+          [
+            15.44,
+            97.32
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0004",
+        "tier": "Minor",
+        "color": "#3B82F6",
+        "area_sqm": 5321.6,
+        "magnitude": 0.507,
+        "type": "Water / Flood Inundation",
+        "summary": "Significant increase in surface water moisture (\u0394NDWI = +9.06).",
+        "priority": "Priority 4 - Low Impact / Routine Audit",
+        "exposure": "Standard Residential / Industrial Sector",
+        "violation": "No Immediate Wetland Violation",
+        "lat": 19.025889,
+        "lon": 72.915477,
+        "cx": 26.72,
+        "cy": 99.65,
+        "pts": [
+          [
+            26.75,
+            99.18
+          ],
+          [
+            26.75,
+            99.3
+          ],
+          [
+            26.39,
+            99.3
+          ],
+          [
+            26.39,
+            99.42
+          ],
+          [
+            26.03,
+            99.42
+          ],
+          [
+            26.03,
+            99.53
+          ],
+          [
+            25.85,
+            99.53
+          ],
+          [
+            25.85,
+            100.0
+          ],
+          [
+            27.47,
+            100.0
+          ],
+          [
+            27.47,
+            99.3
+          ],
+          [
+            27.29,
+            99.3
+          ],
+          [
+            27.29,
+            99.18
+          ],
+          [
+            26.75,
+            99.18
+          ]
+        ]
+      }
+    ],
+    "naive_false_alarms": [
+      {
+        "id": "NAIVE_FA_01",
+        "tier": "False Alarm",
+        "color": "#A855F7",
+        "type": "Vegetation Phenology Drift",
+        "pts": [
+          [
+            50,
+            20
+          ],
+          [
+            65,
+            22
+          ],
+          [
+            62,
+            35
+          ],
+          [
+            48,
+            32
+          ]
+        ],
+        "cx": 56,
+        "cy": 27,
+        "area_sqm": 34200,
+        "reason": "Seasonal moisture & sun angle variation"
+      },
+      {
+        "id": "NAIVE_FA_02",
+        "tier": "False Alarm",
+        "color": "#A855F7",
+        "type": "Cloud Shadow Edge Noise",
+        "pts": [
+          [
+            30,
+            45
+          ],
+          [
+            42,
+            43
+          ],
+          [
+            40,
+            52
+          ],
+          [
+            28,
+            50
+          ]
+        ],
+        "cx": 35,
+        "cy": 47,
+        "area_sqm": 18500,
+        "reason": "Haze and cloud penumbra artifact"
+      },
+      {
+        "id": "NAIVE_FA_03",
+        "tier": "False Alarm",
+        "color": "#A855F7",
+        "type": "Sun Glint Surface Reflection",
+        "pts": [
+          [
+            70,
+            70
+          ],
+          [
+            85,
+            72
+          ],
+          [
+            82,
+            85
+          ],
+          [
+            68,
+            80
+          ]
+        ],
+        "cx": 76,
+        "cy": 77,
+        "area_sqm": 42000,
+        "reason": "Specular water reflection mismatch"
+      },
+      {
+        "id": "NAIVE_FA_04",
+        "tier": "False Alarm",
+        "color": "#A855F7",
+        "type": "Agricultural Harvest Cycle",
+        "pts": [
+          [
+            10,
+            60
+          ],
+          [
+            25,
+            62
+          ],
+          [
+            22,
+            75
+          ],
+          [
+            8,
+            70
+          ]
+        ],
+        "cx": 16,
+        "cy": 67,
+        "area_sqm": 29000,
+        "reason": "Routine crop rotation flagged as deforestation"
+      }
+    ],
+    "total_area_sqm": 72996.0
+  },
+  "levir": {
+    "title": "Texas Urban Development Sector, USA",
+    "sensor": "Aerial High-Resolution Ortho (0.5m GSD)",
+    "t1_date": "Survey Era T1 (Pre-Construction)",
+    "t2_date": "Survey Era T2 (Post-Construction)",
+    "coords": "29.7604\u00b0 N, 95.3698\u00b0 W",
+    "features": [
+      {
+        "id": "CHG_0001",
+        "tier": "Moderate",
+        "color": "#EAB308",
+        "area_sqm": 60.1,
+        "magnitude": 0.8,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +59.8).",
+        "priority": "Priority 3 - Scheduled Municipal / Survey Review",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 47.7,
+        "cy": 1.35,
+        "pts": [
+          [
+            44.67,
+            -1.68
+          ],
+          [
+            50.72,
+            -1.68
+          ],
+          [
+            50.72,
+            4.38
+          ],
+          [
+            44.67,
+            4.38
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0002",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 243.2,
+        "magnitude": 0.942,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = -13.5).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 86.62,
+        "cy": 4.78,
+        "pts": [
+          [
+            80.53,
+            -1.32
+          ],
+          [
+            92.72,
+            -1.32
+          ],
+          [
+            92.72,
+            10.87
+          ],
+          [
+            80.53,
+            10.87
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0003",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 299.8,
+        "magnitude": 0.943,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = +3.9).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 83.45,
+        "cy": 19.44,
+        "pts": [
+          [
+            76.68,
+            12.67
+          ],
+          [
+            90.21,
+            12.67
+          ],
+          [
+            90.21,
+            26.2
+          ],
+          [
+            76.68,
+            26.2
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0004",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 205.2,
+        "magnitude": 0.872,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +53.0).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 3.63,
+        "cy": 18.58,
+        "pts": [
+          [
+            -1.96,
+            12.98
+          ],
+          [
+            9.23,
+            12.98
+          ],
+          [
+            9.23,
+            24.17
+          ],
+          [
+            -1.96,
+            24.17
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0005",
+        "tier": "Critical",
+        "color": "#EF4444",
+        "area_sqm": 416.9,
+        "magnitude": 0.955,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = -27.5).",
+        "priority": "Priority 1 - Immediate Field Triage / Official Alert",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 23.12,
+        "cy": 27.74,
+        "pts": [
+          [
+            15.15,
+            19.76
+          ],
+          [
+            31.1,
+            19.76
+          ],
+          [
+            31.1,
+            35.71
+          ],
+          [
+            15.15,
+            35.71
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0006",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 310.6,
+        "magnitude": 0.904,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +32.3).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 80.19,
+        "cy": 34.79,
+        "pts": [
+          [
+            73.3,
+            27.9
+          ],
+          [
+            87.07,
+            27.9
+          ],
+          [
+            87.07,
+            41.67
+          ],
+          [
+            73.3,
+            41.67
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0007",
+        "tier": "Minor",
+        "color": "#3B82F6",
+        "area_sqm": 30.2,
+        "magnitude": 0.74,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = -64.3).",
+        "priority": "Priority 4 - Low Impact / Routine Audit",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 98.75,
+        "cy": 53.63,
+        "pts": [
+          [
+            96.6,
+            51.49
+          ],
+          [
+            100.9,
+            51.49
+          ],
+          [
+            100.9,
+            55.78
+          ],
+          [
+            96.6,
+            55.78
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0008",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 352.5,
+        "magnitude": 0.937,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +36.2).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 82.24,
+        "cy": 55.36,
+        "pts": [
+          [
+            74.9,
+            48.02
+          ],
+          [
+            89.57,
+            48.02
+          ],
+          [
+            89.57,
+            62.69
+          ],
+          [
+            74.9,
+            62.69
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0009",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 304.6,
+        "magnitude": 0.938,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = -0.5).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 61.61,
+        "cy": 56.49,
+        "pts": [
+          [
+            54.79,
+            49.68
+          ],
+          [
+            68.43,
+            49.68
+          ],
+          [
+            68.43,
+            63.31
+          ],
+          [
+            54.79,
+            63.31
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0010",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 343.2,
+        "magnitude": 0.945,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = -5.3).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 40.98,
+        "cy": 57.15,
+        "pts": [
+          [
+            33.74,
+            49.91
+          ],
+          [
+            48.21,
+            49.91
+          ],
+          [
+            48.21,
+            64.39
+          ],
+          [
+            33.74,
+            64.39
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0011",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 354.4,
+        "magnitude": 0.943,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +28.9).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 21.47,
+        "cy": 57.77,
+        "pts": [
+          [
+            14.11,
+            50.41
+          ],
+          [
+            28.82,
+            50.41
+          ],
+          [
+            28.82,
+            65.12
+          ],
+          [
+            14.11,
+            65.12
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0012",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 190.2,
+        "magnitude": 0.913,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = +14.4).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 52.88,
+        "cy": 89.68,
+        "pts": [
+          [
+            47.49,
+            84.29
+          ],
+          [
+            58.27,
+            84.29
+          ],
+          [
+            58.27,
+            95.07
+          ],
+          [
+            47.49,
+            95.07
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0013",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 270.4,
+        "magnitude": 0.945,
+        "type": "Landcover Disturbance",
+        "summary": "Textural ground surface disturbance (Brightness drift = +17.4).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 90.06,
+        "cy": 89.24,
+        "pts": [
+          [
+            83.64,
+            82.82
+          ],
+          [
+            96.49,
+            82.82
+          ],
+          [
+            96.49,
+            95.67
+          ],
+          [
+            83.64,
+            95.67
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0014",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 260.9,
+        "magnitude": 0.932,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +64.8).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 35.74,
+        "cy": 89.85,
+        "pts": [
+          [
+            29.43,
+            83.54
+          ],
+          [
+            42.05,
+            83.54
+          ],
+          [
+            42.05,
+            96.16
+          ],
+          [
+            29.43,
+            96.16
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0015",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 327.6,
+        "magnitude": 0.937,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +35.8).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 71.89,
+        "cy": 90.72,
+        "pts": [
+          [
+            64.82,
+            83.65
+          ],
+          [
+            78.96,
+            83.65
+          ],
+          [
+            78.96,
+            97.8
+          ],
+          [
+            64.82,
+            97.8
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0016",
+        "tier": "Moderate",
+        "color": "#EAB308",
+        "area_sqm": 115.1,
+        "magnitude": 0.92,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +43.4).",
+        "priority": "Priority 3 - Scheduled Municipal / Survey Review",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 2.51,
+        "cy": 90.61,
+        "pts": [
+          [
+            -1.69,
+            86.42
+          ],
+          [
+            6.7,
+            86.42
+          ],
+          [
+            6.7,
+            94.8
+          ],
+          [
+            -1.69,
+            94.8
+          ]
+        ]
+      },
+      {
+        "id": "CHG_0017",
+        "tier": "High",
+        "color": "#F97316",
+        "area_sqm": 284.2,
+        "magnitude": 0.925,
+        "type": "New Building / Structural Encroachment",
+        "summary": "High-contrast physical building modification (Brightness drift = +52.9).",
+        "priority": "Priority 2 - Inspection Within 24 Hours",
+        "exposure": "Suburban Development Sector 4B",
+        "violation": "Permitted Commercial/Residential Expansion",
+        "lat": 29.7635,
+        "lon": -95.378,
+        "cx": 16.74,
+        "cy": 91.76,
+        "pts": [
+          [
+            10.15,
+            85.17
+          ],
+          [
+            23.33,
+            85.17
+          ],
+          [
+            23.33,
+            98.35
+          ],
+          [
+            10.15,
+            98.35
+          ]
+        ]
+      }
+    ],
+    "naive_false_alarms": [],
+    "total_area_sqm": 4369.1
+  },
+  "benchmark": {
+    "evaluation_samples_count": 3,
+    "changeintel_ai_engine": {
+      "precision": 0.8719,
+      "recall": 0.8649,
+      "f1_score": 0.8638,
+      "iou": 0.7612,
+      "false_alarm_rate": 0.0359
+    },
+    "naive_spectral_baseline": {
+      "precision": 0.2116,
+      "recall": 0.4505,
+      "f1_score": 0.2864,
+      "iou": 0.1676,
+      "false_alarm_rate": 0.4289
+    },
+    "false_alarm_reduction_percentage": 91.6,
+    "f1_improvement_percentage": 201.6
+  }
+}
