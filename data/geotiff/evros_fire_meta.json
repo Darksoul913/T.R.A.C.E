@@ -3,17 +3,65 @@
   {
    "id": "S2B_35TMF_20230729_0_L2A",
    "date": "2023-07-29",
-   "cloud": 0.009483
+   "cloud": 0.009483,
+   "datetime": "2023-07-29T09:19:04.562000Z",
+   "sun_elevation": 64.1098638636264,
+   "sun_azimuth": 144.857409809256,
+   "processing_baseline": "05.09",
+   "platform": "sentinel-2b"
   },
   {
    "id": "S2A_35TMF_20230912_0_L2A",
    "date": "2023-09-12",
-   "cloud": 0.994114
+   "cloud": 0.994114,
+   "datetime": "2023-09-12T09:19:03.668000Z",
+   "sun_elevation": 51.3819330376047,
+   "sun_azimuth": 159.159373727411,
+   "processing_baseline": "05.09",
+   "platform": "sentinel-2a"
   }
  ],
  "reference": {
   "source": "Copernicus EMS EMSR686 AOI01 DEL_MONIT09 (WorldView-2, 2023-09-03)",
   "event": "data/raw/ems/EMSR686_AOI01_DEL_MONIT09_v1/EMSR686_AOI01_DEL_MONIT09_observedEventA_v1.json",
   "aoi": "data/raw/ems/EMSR686_AOI01_DEL_MONIT09_v1/EMSR686_AOI01_DEL_MONIT09_areaOfInterestA_v1.json"
- }
+ },
+ "recovery": [
+  {
+   "i": 0,
+   "id": "S2A_35TMF_20240817_0_L2A",
+   "date": "2024-08-17",
+   "datetime": "2024-08-17T09:18:59.350000Z",
+   "cloud": 0.001159,
+   "sun_elevation": 59.293986290493905,
+   "sun_azimuth": 150.891780865616,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0
+  },
+  {
+   "i": 1,
+   "id": "S2C_35TMF_20250822_0_L2A",
+   "date": "2025-08-22",
+   "datetime": "2025-08-22T09:19:18.515000Z",
+   "cloud": 0.001019,
+   "sun_elevation": 57.9614585838825,
+   "sun_azimuth": 152.624637161237,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2c",
+   "unobservable": 0.0
+  },
+  {
+   "i": 2,
+   "id": "S2B_35TMF_20260901_0_L2A",
+   "date": "2026-09-01",
+   "datetime": "2026-09-01T09:18:56.172000Z",
+   "cloud": 0.000225,
+   "sun_elevation": 54.9355187842991,
+   "sun_azimuth": 155.724040596351,
+   "processing_baseline": "05.12",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
+  }
+ ]
 }

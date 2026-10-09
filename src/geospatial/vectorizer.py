@@ -221,6 +221,7 @@ class GeospatialVectorizer:
                 change_type = sem["change_type"]
                 sem_summary = sem["summary"]
             else:
+                sem = {}
                 change_type = "Structural Change"
                 sem_summary = "High-confidence structural change detected."
 
@@ -246,6 +247,8 @@ class GeospatialVectorizer:
                 "severity_mode": mode,
                 "change_type": change_type,
                 "summary": sem_summary,
+                # index shifts behind the label (None without the bands), for the case card and copilot facts
+                "d_ndvi": sem.get("d_ndvi"), "d_mndwi": sem.get("d_ndwi"), "d_ndbi": sem.get("d_ndbi"), "d_nbr": sem.get("d_nbr"),
                 "compactness": round(compactness, 3),
                 "centroid_lon": lon,
                 "centroid_lat": lat,

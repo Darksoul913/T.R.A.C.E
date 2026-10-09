@@ -37,7 +37,7 @@ T.R.A.C.E. routes imagery through specialized detection engines depending on sen
 7. **Clean Geospatial Vectorization**: Morphological opening/closing, Polsby-Popper compactness filtering (removes boundary slivers), Shapely simplification, and local UTM reprojection for true geodesic metric area ($m^2$).
 8. **Multi-Factor Severity Scoring**: Dynamic formula: Area (resolution-aware) × Magnitude × Type Weight × Exposure, in Encroachment and Disaster modes, banded Critical / High / Medium / Low.
 9. **Multi-Format GIS Export**: Direct download of OGC GeoPackage (`.gpkg` with spatial index) and GeoJSON (`.geojson`).
-10. **Interactive Split-View Swipe Web Application**: Standalone light console (`web/index.html`) with curtain swipe, detector badges, EMS reference outlines, filterable attribute table, and click-to-zoom inspector, plus Streamlit console (`web/app.py`).
+10. **Interactive Split-View Swipe Web Application**: Standalone light console (`web/index.html`) with curtain swipe, EMS reference outlines, attention views over the case list, the Change-to-Action Card and time travel (see Product Experience below), plus Streamlit console (`web/app.py`).
 
 #### Headline Features (The Winning Edge)
 11. **OSM Asset Exposure & Encroachment Overlay**: Automated Geofabrik extract matching (`osm_extract_for()`) across all 28 global sectors. 500 m critical asset buffer (hospitals, schools) and conservation screening (CRZ 50 m tidal water, DCPR nalas, reserved forests).
@@ -50,7 +50,28 @@ T.R.A.C.E. routes imagery through specialized detection engines depending on sen
 #### Extended Platform Capabilities
 - **Copernicus EMS Disaster Impact Validation**: Dedicated disaster detectors for wildfire burn severity ($dNBR \ge 0.27$, Evros EMSR686, F1 **$91.8\%$**) and flood inundation ($MNDWI > 0$, Trimmu EMSR838, F1 **$76.4\%$**) validated against official EMS delineations.
 - **Missed-Encroachment Defence**: Multi-year Sentinel-2 trend analysis (Theil–Sen slope), precursor detection (cleared plots, new tracks), and recall-first thresholds inside protected zones.
-- **Officer Case Workflow**: Browser-based audit trail: New → Under review → Field verification → Confirmed → Reported → Resolved (or Dismissed), CAP alerts gated on verification, and citizen lookup showing verified cases only.
+- **Officer Case Workflow**: Append-only decision history: New → Under review → Field verification → Confirmed → Reported → Resolved (or Dismissed), with who decided what, when and why; CAP alerts gated on verification, and citizen lookup showing verified cases only.
+
+#### Context and Temporal Intelligence (core, feeds every case)
+- **Scene Passport & Comparability Score (#18)** — `src/geospatial/passport.py`: per pair, scene IDs, acquisition times and sun angles from the STAC item (or the NOAA solar equations at the 10:30 Sentinel-2 overpass for OSCD tiles, checked against STAC to 0.2°), IMD season and crop stage, misregistration, cloud share, processing baselines and SHA-256 checksums. A 0–100 score ranks how far the two images can be compared. Below 60 the learned detectors' threshold is raised, except inside recall-first zones; `scripts/eval_comparability.py` measures that trade-off against OSCD ground truth (on the labelled low-comparability cities precision rises 0.41 → 0.54 and recall falls 0.046 → 0.028).
+- **Temporal Context Engine (#19)** — `src/geospatial/temporal.py`: for every polygon, its index in each dated frame. From that it derives change dating (first visible between two images), the pre-existing / wrong-baseline check, persistence (held in later images, or gone for good) and a seasonal check against the spot's own post-monsoon → dry-season swing. For disasters it adds recovery: share still under water at each revisit, or share of lost NBR regained.
+- **Precursor detection by robust trend** — `src/geospatial/creep.py` now judges cleared plots and tracks by a Theil–Sen NDVI trend across the yearly series, not first-vs-last year. Endpoint comparisons were reading January greenness against March browning as clearing.
+- **Grounding validator (#14)** — `src/exporters/grounding.py` and `web/caselogic.js` (same rule): every number in generated text must be a value from the case facts at the precision it is written with, or the sentence is dropped. The SitRep PDF now carries a data-limitations section built from the same facts.
+
+## 🧭 Product Experience: From Detection to Decision (#41–#48, #31)
+Every case answers four questions on one screen: what changed, why it matters, how reliable it is, and what to do next.
+
+| # | Feature | What the officer gets |
+|---|---|---|
+| 41 | **Mission overview** | Opens where the globe lands: a one-line situation sentence and five figures (changes, high priority, awaiting verification, uncertain, not observable). Each figure opens the matching case list. |
+| 42 | **Interactive change evidence** | Picking a case flies to it and puts it under the swipe divider. Its own changed pixels light up inside the outline and the rest of the tile dims. |
+| 43 | **Change-to-Action Card** | What changed (plain words, area, first-seen date), why it matters (assets, buffer flags, a reason line from the score factors), how reliable (signal vs threshold, comparability, cloud, seasonal check) and a rule-based next step. Spectral indices, score breakdown, detector and Scene Passport sit behind *Show details*. |
+| 44 | **Verification actions & history** | Confirm change, Mark as false alarm, Request field inspection, Assign case (to BMC ward designations or a named officer); DDMA steps follow. Role-gated, noted, undoable (undo appends a reversal), exportable. |
+| 45 | **"Explain this change" copilot** | Six suggested questions answered offline from the case facts. Free text goes to `/api/explain` (Claude `claude-opus-5-5`, structured JSON, refusal fallback) when the console is served by the FastAPI app. Facts and possible explanations are always shown separately, and any sentence with a number not in the facts is removed. |
+| 46 | **Smart attention mode** | What matters (default), High priority, Uncertain, Needs verification, Assigned to me, All changes. Tiny same-type fragments and creep polygons on an existing case are folded in. Sorted by priority, then age. |
+| 47 | **Time-travel map** | A date strip over the images that exist: Mumbai 2017–2026 dry-season frames; Evros and Trimmu before, after and three recovery revisits. The selected case's index trend shows first-visible and pair markers. |
+| 31 | **Field verification** | Field officers get Assigned to me, Navigate to site, site photos (stored on the device in IndexedDB), on-site confirm/dismiss and an offline outbox. It syncs to `/api/field/sync` when online, or travels as a field pack (.json). |
+| 48 | **Team progress** | Cases reviewed, false alarms dismissed, field inspections completed, cases resolved; decisions per day; oldest open cases and median days open by zone and team; CSV for administrators. Process measures only. |
 
 ---
 
@@ -92,7 +113,7 @@ Evaluated on final vectorized polygons within official EMS reference AOIs:
 
 ## 🏛️ Policy & Standards Alignment
 - **SACHET / NDMA**: 1-click generation of OASIS CAP v1.2 XML alert drafts (`Draft - Awaiting DDMA Approval`).
-- **Disaster Management (Amendment) Act, 2025**: Continuous floodplain and drain monitoring for newly formed **Urban Disaster Management Authorities (UDMAs - Sec 41A)**.
+- **Disaster Management (Amendment) Act, 2025, Sec 41A**: lets a State Government constitute an **Urban Disaster Management Authority** for its capital and every Municipal Corporation city (not Delhi or Chandigarh), chaired by the Municipal Commissioner, to prepare the Urban Plan. It is an enabling power, not a mandate. T.R.A.C.E. supplies the floodplain, drain and wetland monitoring such a plan needs. Checked against the Bill text (PRS India); the Act comes into force by Gazette notification.
 - **DPDP Act, 2023**: Aggregated spatial footprints; zero individual property or personal citizen identification.
 - **Citizen Vernacular Safety Portal**: Plain-language safety lookups in **English**, **मराठी (Marathi)**, and **हिंदी (Hindi)** with a 1-tap community ground-truth confirmation loop.
 
@@ -115,6 +136,8 @@ pip install -r requirements.txt
 ```bash
 python scripts/build_data.py        # OSCD Mumbai & local LEVIR sample tiles
 python scripts/fetch_s2.py          # Earth Search Sentinel-2 L2A + Copernicus EMS event sectors (Evros wildfire, Trimmu flood)
+python scripts/fetch_s2.py mumbai_s2 --only meta,seasonal,series   # just the 2017-2026 yearly series + seasonal pair (~8 min)
+python scripts/fetch_s2.py evros_fire trimmu_flood --only meta,recovery   # post-event revisits for disaster time travel
 python -m src.models.track_b        # Trains Track B 14-fold LOCO models + full network -> checkpoints/s2_track_b.pt (~24s)
 ```
 `fetch_s2.py` writes the `mumbai_s2` change pair (2019 → 2025, SCL cloud mask), Copernicus EMS disaster event pairs (`evros_fire`, `trimmu_flood` with official EMS ground-truth rasters), and multi-year series for slow-creep analysis.
@@ -128,6 +151,10 @@ python -m src.data.harmonise                   # Phase-correlation registration,
 python src/geospatial/spectral_indices.py      # 9-rule semantic change-type classification
 python -m src.geospatial.severity              # Multi-factor severity scoring (Encroachment & Disaster modes)
 python -m src.geospatial.osm_overlay           # CRZ tidal water, DCPR nalas, and protected zone screening
+python -m src.geospatial.passport              # Scene Passport, solar geometry vs STAC, Comparability Score
+python -m src.geospatial.temporal              # change dating, persistence, seasonal check, disaster recovery
+python -m src.exporters.grounding              # number validator for generated text
+node tests/test_caselogic.mjs                  # every copilot answer and card sentence grounded, on every real case
 ```
 
 ### 4. Run Quantitative Benchmark Evaluation & Stress Test
@@ -151,6 +178,12 @@ python scripts/build_frontend_light.py            # Bundles all sectors, images,
 OSM asset exposure (hospitals, schools, protected zones) uses offline committed snapshots in `data/osm/`. When generating a new sector, `osm_extract_for()` automatically queries Geofabrik's hierarchy to download the smallest regional extract covering the bounding box into `data/raw/osm/`, checksum-verifying the file before extracting vector features.
 
 ### 6. Launch Console
+To use team sync and the free-text copilot, serve it with the FastAPI app (set `ANTHROPIC_API_KEY`, or sign in with `ant auth login`, for the copilot; without credentials it answers the suggested questions offline):
+```bash
+uvicorn src.server.app:app --port 8765
+```
+Open `http://localhost:8765`. Opened as a file or from `http.server`, the console keeps decisions on the device and moves them with field packs.
+
 Open `web/index.html` directly in any web browser, or serve it locally:
 ```bash
 python -m http.server 8000 --directory web
@@ -167,7 +200,7 @@ Open `http://localhost:8501`.
 
 ## 📁 Repository Structure
 ```
-HFD/
+T.R.A.C.E/
 ├── IDEATION_DOC.md           # Definitive system specification & ideation blueprint
 ├── report.md                 # Detailed evaluation audit, battle plan status & benchmark metrics
 ├── requirements.txt          # Python dependencies
@@ -175,19 +208,23 @@ HFD/
 ├── data/
 │   ├── raw/                  # Downloaded raw rasters & Geofabrik OSM extracts (git-ignored)
 │   ├── osm/                  # Offline OSM exposure snapshots & gazetteers for all 28 sectors
-│   ├── watch_areas.json      # Sentinel-2 coordinates, acquisition dates, and event AOIs
+│   ├── watch_areas.json      # Sentinel-2 watch areas: pair, yearly series and post-event recovery windows
+│   ├── oscd_dates.json       # OSCD acquisition dates (from each city's dates.txt), so rebuilds need no dataset folder
 │   ├── geotiff/              # Standardized orthorectified GeoTIFF pairs + EMS ground truth
 │   └── outputs/              # Exported GeoPackage, GeoJSON, CAP XML, SitRep PDFs, and benchmark JSONs
 ├── src/
 │   ├── data/                 # GeoTIFF I/O, phase correlation harmonisation, and dataset loaders
 │   ├── models/               # BIT Transformer (Track A), Track B S2 MLP, Naive baseline, and Tiled inference
-│   ├── geospatial/           # Vectorization, UTM projection, spectral indices, events, creep, and OSM overlay
-│   └── exporters/            # GeoPackage, GeoJSON, SACHET CAP XML, and SitRep PDF generators
+│   ├── geospatial/           # Vectorization, spectral indices, events, creep, OSM overlay, passport (#18), temporal (#19)
+│   ├── exporters/            # GeoPackage, GeoJSON, SACHET CAP XML, SitRep PDF, grounding validator (#14)
+│   └── server/app.py         # FastAPI: upload-and-analyse, /api/explain copilot, /api/field/sync
 ├── web/
 │   ├── index.html            # Standalone single-page mission control console (zero external assets)
+│   ├── caselogic.js          # Case facts, card sentences, uncertainty rule, offline copilot + validator (inlined)
 │   └── scenes.json           # Serialized feature vectors, metadata, and benchmarks across 28 sectors
 └── scripts/
     ├── build_scenes.py       # Full pipeline runner across all 28 sectors (Track A, Track B, Event engines)
     ├── build_frontend_light.py # Single-file inlining generator for web/index.html
-    └── fetch_s2.py           # Earth Search STAC Sentinel-2 L2A & Copernicus EMS harvester
+    ├── fetch_s2.py           # Earth Search STAC Sentinel-2 L2A harvester (pair, series, recovery, --only parts)
+    └── eval_comparability.py # Measures the comparability threshold tightening against OSCD ground truth
 ```

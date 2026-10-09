@@ -52,7 +52,10 @@ def detect(refl: np.ndarray, valid: np.ndarray, protected: Optional[np.ndarray] 
     creep = (observable & (trend >= CUM_RISE * scale) & (steps.max(axis=0) < PAIR_RISE)
              & ((steps > 0).mean(axis=0) >= POSITIVE_STEPS))
 
-    d_ndvi, d_ndbi = ndvi[-1] - ndvi[0], ndbi[-1] - ndbi[0]
+    # precursors by robust trend too, not first vs last year: the yearly frames fall anywhere in Jan-Mar, and
+    # early dry-season greenness swings NDVI by +-0.2 between them, which endpoints alone read as clearing
+    d_ndvi = theil_sen(ndvi) * (ndvi.shape[0] - 1)
+    d_ndbi = trend
     cleared = observable & ~creep & (d_ndvi <= -CLEAR_NDVI_DROP * scale) & (d_ndbi > 0.02) & (d_ndbi < PAIR_RISE)
     track = np.zeros_like(cleared)
     lab, n = label(cleared)

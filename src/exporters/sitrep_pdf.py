@@ -57,8 +57,11 @@ class SitRepGenerator:
         analysis_mode: str = "Encroachment / planning audit",
         output_path: str = "data/outputs/sitrep_report.pdf",
         event: str = "encroachment",
-        detector_note: str = ""
+        detector_note: str = "",
+        unobservable_pct: float = None,
+        limitations: List[str] = None
     ) -> str:
+        """limitations: data caveats computed by the pipeline (comparability, cloud, dating coverage), printed as is."""
         profile = EVENT_PROFILES.get(event, EVENT_PROFILES["encroachment"])
         analysis_mode = profile["sitrep_mode"]
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -141,8 +144,10 @@ class SitRepGenerator:
         summary_text = (
             f"Automated change-intelligence detected {total_count} change polygons totaling {total_area:,.0f} m² "
             f"across the surveyed bounds; {critical_count} critical and {high_count} high-priority sites are queued for "
-            f"ground verification. Cloud, shadow and no-data areas were not assessed and are mapped separately. "
-            f"{detector_note} High-priority footprints are available as draft SACHET-compatible CAP records."
+            f"ground verification. "
+            + (f"{unobservable_pct:.1f}% of the area was under cloud, shadow or no data on either date: not assessed, mapped separately. "
+               if unobservable_pct else "Both images were fully observable (no cloud, shadow or no data). ")
+            + f"{detector_note} High-priority footprints are available as draft SACHET-compatible CAP records."
         ).replace("  ", " ")
         pdf.multi_cell(0, 5, summary_text)
         pdf.ln(4)
@@ -177,6 +182,16 @@ class SitRepGenerator:
                 pdf.cell(45, 5, f"{row.get('centroid_lat', 0):.4f}, {row.get('centroid_lon', 0):.4f}", border=1, new_x="LMARGIN", new_y="NEXT")
 
         pdf.ln(5)
+
+        if limitations:
+            pdf.set_font("helvetica", "B", 9)
+            pdf.set_text_color(20, 30, 50)
+            pdf.cell(0, 5, "DATA LIMITATIONS:", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("helvetica", "", 8)
+            pdf.set_text_color(60, 60, 60)
+            for line in limitations:
+                pdf.multi_cell(0, 4, f"- {line}", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(3)
 
         # Immediate Directives & Sign-off Block
         pdf.set_font("helvetica", "B", 9)

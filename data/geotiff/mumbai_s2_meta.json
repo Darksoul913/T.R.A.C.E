@@ -3,24 +3,46 @@
   {
    "id": "S2B_43QBB_20190329_1_L2A",
    "date": "2019-03-29",
-   "cloud": 0.001894
+   "cloud": 0.001894,
+   "datetime": "2019-03-29T05:53:42.500000Z",
+   "sun_elevation": 64.5777145816196,
+   "sun_azimuth": 126.812214754275,
+   "processing_baseline": "05.00",
+   "platform": "sentinel-2b"
   },
   {
    "id": "S2B_43QBB_20250106_0_L2A",
    "date": "2025-01-06",
-   "cloud": 0.00063
+   "cloud": 0.00063,
+   "datetime": "2025-01-06T05:53:41.120000Z",
+   "sun_elevation": 43.6641497043973,
+   "sun_azimuth": 153.599890397044,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b"
   }
  ],
  "seasonal_pair": [
   {
    "id": "S2B_43QBB_20241107_0_L2A",
    "date": "2024-11-07",
-   "cloud": 0.001108
+   "datetime": "2024-11-07T05:53:34.100000Z",
+   "cloud": 0.001108,
+   "sun_elevation": 51.3194327740815,
+   "sun_azimuth": 156.824867339666,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
   },
   {
    "id": "S2B_43QBB_20250307_0_L2A",
    "date": "2025-03-07",
-   "cloud": 0.000654
+   "datetime": "2025-03-07T05:53:43.848000Z",
+   "cloud": 0.000654,
+   "sun_elevation": 57.4939546965351,
+   "sun_azimuth": 136.874846492529,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
   }
  ],
  "series": [
@@ -28,55 +50,121 @@
    "year": 2017,
    "id": "S2A_43QBB_20170304_0_L2A",
    "date": "2017-03-04",
-   "cloud": 0.011284
+   "datetime": "2017-03-04T05:46:33.662000Z",
+   "cloud": 0.011284,
+   "sun_elevation": 56.4443807861185,
+   "sun_azimuth": 137.960119045853,
+   "processing_baseline": "00.01",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0028
   },
   {
    "year": 2018,
    "id": "S2B_43QBB_20180103_3_L2A",
    "date": "2018-01-03",
-   "cloud": 0.001125
+   "datetime": "2018-01-03T05:53:37Z",
+   "cloud": 0.001125,
+   "sun_elevation": 43.4778717584372,
+   "sun_azimuth": 154.191991768777,
+   "processing_baseline": "05.00",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
   },
   {
    "year": 2019,
    "id": "S2A_43QBB_20190324_1_L2A",
    "date": "2019-03-24",
-   "cloud": 0.006324
+   "datetime": "2019-03-24T05:53:39.479000Z",
+   "cloud": 0.006324,
+   "sun_elevation": 62.9745824291611,
+   "sun_azimuth": 129.514284846469,
+   "processing_baseline": "05.00",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0
   },
   {
    "year": 2020,
    "id": "S2A_43QBB_20200217_1_L2A",
    "date": "2020-02-17",
-   "cloud": 0.000401
+   "datetime": "2020-02-17T05:53:34.587000Z",
+   "cloud": 0.000401,
+   "sun_elevation": 51.4795094417163,
+   "sun_azimuth": 143.183120472044,
+   "processing_baseline": "05.00",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0
   },
   {
    "year": 2021,
    "id": "S2B_43QBB_20210127_1_L2A",
    "date": "2021-01-27",
-   "cloud": 0.000411
+   "datetime": "2021-01-27T05:53:40.690000Z",
+   "cloud": 0.000411,
+   "sun_elevation": 46.442034831736,
+   "sun_azimuth": 148.80507355938,
+   "processing_baseline": "05.00",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
   },
   {
    "year": 2022,
    "id": "S2B_43QBB_20220201_0_L2A",
    "date": "2022-02-01",
-   "cloud": 0.000531
+   "datetime": "2022-02-01T05:53:35.063000Z",
+   "cloud": 0.000531,
+   "sun_elevation": 47.4366574092692,
+   "sun_azimuth": 147.558035881702,
+   "processing_baseline": "04.00",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
   },
   {
    "year": 2023,
    "id": "S2A_43QBB_20230122_0_L2A",
    "date": "2023-01-22",
-   "cloud": 0.00078
+   "datetime": "2023-01-22T05:53:36.619000Z",
+   "cloud": 0.00078,
+   "sun_elevation": 45.4384603595479,
+   "sun_azimuth": 150.150529872734,
+   "processing_baseline": "05.09",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0
   },
   {
    "year": 2024,
    "id": "S2A_43QBB_20240317_0_L2A",
    "date": "2024-03-17",
-   "cloud": 0.000209
+   "datetime": "2024-03-17T05:53:41.186000Z",
+   "cloud": 0.000209,
+   "sun_elevation": 60.931068576293995,
+   "sun_azimuth": 132.559209279768,
+   "processing_baseline": "05.10",
+   "platform": "sentinel-2a",
+   "unobservable": 0.0
   },
   {
    "year": 2025,
    "id": "S2B_43QBB_20250106_0_L2A",
    "date": "2025-01-06",
-   "cloud": 0.00063
+   "datetime": "2025-01-06T05:53:41.120000Z",
+   "cloud": 0.00063,
+   "sun_elevation": 43.6641497043973,
+   "sun_azimuth": 153.599890397044,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
+  },
+  {
+   "year": 2026,
+   "id": "S2C_43QBB_20260225_0_L2A",
+   "date": "2026-02-25",
+   "datetime": "2026-02-25T05:53:42.488000Z",
+   "cloud": 0.000597,
+   "sun_elevation": 54.1262542611422,
+   "sun_azimuth": 140.524950162199,
+   "processing_baseline": "05.12",
+   "platform": "sentinel-2c",
+   "unobservable": 0.0
   }
  ]
 }

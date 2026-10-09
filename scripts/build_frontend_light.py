@@ -17,7 +17,7 @@ def b64(rel):
 
 
 # web/scenes.json is produced by scripts/build_scenes.py (runs the real pipeline)
-scenes = json.loads((ROOT / 'web/scenes.json').read_text())
+scenes = json.loads((ROOT / 'web/scenes.json').read_text(encoding='utf-8'))
 severity = scenes.pop('_severity', None)   # type weights + priorities, to explain scores in the inspector
 OUT = 'data/outputs/'
 
@@ -27,12 +27,12 @@ DATA = {
     'scenes': scenes,
     'severity': severity,
     'profiles': EVENT_PROFILES,
-    'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text()),
+    'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text(encoding='utf-8')),
     # src/models/stress_test.py; the chart is omitted when it hasn't been run
-    'stress': json.loads((ROOT / OUT / 'stress_test.json').read_text()) if (ROOT / OUT / 'stress_test.json').exists() else None,
+    'stress': json.loads((ROOT / OUT / 'stress_test.json').read_text(encoding='utf-8')) if (ROOT / OUT / 'stress_test.json').exists() else None,
     # NASA Blue Marble (public domain), equirectangular 2048x1024
     'earth': 'data:image/jpeg;base64,' + b64('web/assets/earth_equirect.jpg'),
-    'files': {k: {'geojson': (ROOT / OUT / sc['files']['geojson']).read_text(),
+    'files': {k: {'geojson': (ROOT / OUT / sc['files']['geojson']).read_text(encoding='utf-8'),
                   'gpkg': b64(OUT + sc['files']['gpkg']),
                   'sitrep': b64(OUT + sc['files']['sitrep'])} for k, sc in scenes.items()},
 }
@@ -55,6 +55,7 @@ TEMPLATE = r"""<!DOCTYPE html>
   --line:rgba(30,38,32,.11); --line-2:rgba(30,38,32,.2);
   --forest:#2F4A35; --forest-h:#253C2B; --moss:#5E7A3E; --ocean:#2D6A78; --clay:#B4612F; --sky:#DCE7E3;
   --crit:#A3382B; --high:#C46A2A; --mod:#B08A1E; --minor:#3A7C88; --fa:#7A4E7A; --unobs:#5F6670; --unobs-bg:rgba(214,217,220,.6);
+  --unc:#4F5D8C; --heat:#FFC43D;
   --btn-ink:#F6F1E7;
   --glass-fill:rgba(251,248,242,.72); --glass-line:rgba(30,38,32,.14);
   --dx: 8.5; --dy: -40;
@@ -252,6 +253,7 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .dash.on .rise{opacity:1;transform:none}
 
 .topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tb-ctl{display:contents}
 .tb-brand{display:flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;padding:6px 10px 6px 6px;border-radius:99px}
 .tb-brand:hover{background:var(--card-2)}
 .tb-brand svg{color:var(--forest)}
@@ -273,6 +275,8 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .dbody{display:grid;grid-template-columns:290px minmax(0,1fr) 330px;grid-template-areas:"left center right";
   gap:12px;padding:12px;min-height:0}
 .col{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin}
+.col>.card{flex-shrink:0}   /* the column scrolls; cards keep their height */
+.left>.tcard{flex-shrink:1}
 .left{grid-area:left} .right{grid-area:right}
 .center{grid-area:center;display:flex;flex-direction:column;gap:12px;min-height:0}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
@@ -280,18 +284,85 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .city-pick{font:inherit;font-size:12px;font-weight:600;border:1px solid var(--line);background:var(--card-2);border-radius:99px;padding:7px 12px;color:var(--ink);max-width:180px}
 .city-pick.on{background:var(--card);box-shadow:0 1px 3px rgba(30,38,32,.14)}
 .seg-sm button{padding:4px 9px;font-size:10.5px;letter-spacing:0;text-transform:none}
-.card h3,.card-h{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+.card h3,.card-h{margin:0 0 10px;font-size:13px;font-weight:700;letter-spacing:-.005em;color:var(--ink);
   display:flex;align-items:center;justify-content:space-between;gap:8px}
-.card-h .mono{letter-spacing:0;text-transform:none;font-weight:500}
+.card-h .mono{font-size:11px;font-weight:500;color:var(--muted)}
 
-.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
-.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px}
-.kpi-l{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.kpi-v{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
-.kpi-v small{font-size:12px;color:var(--muted);font-weight:600;margin-left:3px}
-.kpi-s{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ---- semantic sets (#43 design principle): priority, uncertainty, workflow status; never colour alone ---- */
+.tierm{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--c)}
+.tierm::before{content:"";width:9px;height:9px;background:var(--c);flex:none}
+.tierm[data-t="Critical"]{--c:var(--crit)} .tierm[data-t="Critical"]::before{clip-path:polygon(50% 0,100% 100%,0 100%)}
+.tierm[data-t="High"]{--c:var(--high)} .tierm[data-t="High"]::before{transform:rotate(45deg) scale(.82)}
+.tierm[data-t="Medium"]{--c:var(--mod)} .tierm[data-t="Medium"]::before{border-radius:2px}
+.tierm[data-t="Low"]{--c:var(--minor)} .tierm[data-t="Low"]::before{border-radius:50%}
+.stm{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;color:var(--c,var(--muted));white-space:nowrap}
+.stm i{font-style:normal;font-weight:700}
+.stm[data-s="New"]{--c:var(--muted)} .stm[data-s="Under review"]{--c:var(--ocean)} .stm[data-s="Field verification"]{--c:var(--clay)}
+.stm[data-s="Confirmed"],.stm[data-s="Reported"],.stm[data-s="Resolved"]{--c:var(--forest)} .stm[data-s="Dismissed"]{--c:var(--faint)}
+.uncm{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:var(--unc);white-space:nowrap}
+.uncm::before{content:"?";display:grid;place-items:center;width:13px;height:13px;border:1.4px dashed var(--unc);border-radius:50%;font-size:9px;font-weight:800}
 
-/* legend */
+/* ---- mission figures (#41) ---- */
+.mission{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.mfig{display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;border:1px solid var(--line);background:var(--card);
+  border-radius:12px;padding:9px 12px;cursor:pointer;min-width:0}
+.mfig:hover{border-color:var(--line-2);background:#fff}
+.mfig b{font-size:21px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1;color:var(--c,var(--ink))}
+.mfig span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.mfig[aria-pressed="true"]{border-color:var(--forest);box-shadow:inset 0 0 0 1px var(--forest)}
+.mfig.static{cursor:default}.mfig.static:hover{background:var(--card);border-color:var(--line)}
+
+/* overview, shown where the globe lands */
+.overview{position:absolute;z-index:8;left:14px;top:14px;bottom:14px;width:min(430px, calc(100% - 28px));overflow:auto;
+  background:color-mix(in srgb, var(--card) 94%, transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:1px solid var(--line-2);border-radius:18px;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(30,38,32,.22);cursor:default;
+  display:flex;flex-direction:column}
+.overview[hidden]{display:none}
+.ov-place{font-size:13px;font-weight:600;color:var(--ink-2)}
+.ov-dates{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
+.ov-sit{margin:16px 0 14px;font-size:24px;line-height:1.22;font-weight:700;letter-spacing:-.015em;color:var(--ink);text-wrap:balance}
+.ov-rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.ov-row{display:grid;grid-template-columns:76px 1fr auto;align-items:baseline;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);
+  background:none;padding:11px 2px;text-align:left;cursor:pointer;font:inherit}
+.ov-row:hover{background:color-mix(in srgb, var(--forest) 5%, transparent)}
+.ov-row b{font-size:32px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;color:var(--c,var(--ink))}
+.ov-row span{font-size:14px;font-weight:600;color:var(--ink)}
+.ov-row small{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px}
+.ov-row em{font-style:normal;font-size:12px;font-weight:600;color:var(--ocean)}
+.ov-row.static{cursor:default}.ov-row.static:hover{background:none}
+.ov-acts{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.ov-acts .abtn{flex:1;min-width:150px;padding:11px 12px;font-size:13px}
+.ov-area{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.ov-area select{flex:1;min-width:0;font:inherit;font-size:12.5px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:6px 8px;color:var(--ink)}
+html:not(.reduced) .overview.show .ov-row{animation:liftIn .5s var(--e-soft) both;animation-delay:calc(var(--d) * 70ms + 120ms)}
+html:not(.reduced) .overview.show{animation:pillIn .45s var(--e-soft) both}
+
+/* ---- attention views + case list (#46) ---- */
+.views{display:flex;flex-direction:column;gap:1px;margin:0 -6px 10px}
+.vbtn{display:flex;align-items:center;gap:8px;border:0;background:none;padding:8px 8px;border-radius:9px;font:inherit;font-size:13px;
+  font-weight:600;color:var(--ink-2);cursor:pointer;text-align:left}
+.vbtn:hover{background:var(--card-2);color:var(--ink)}
+.vbtn[aria-pressed="true"]{background:color-mix(in srgb, var(--forest) 10%, transparent);color:var(--forest)}
+.vbtn .n{margin-left:auto;font-family:var(--mono);font-size:11.5px;font-weight:500;color:var(--muted)}
+.vbtn small{display:block;font-size:11px;font-weight:500;color:var(--muted)}
+.vbtn:focus-visible{border-radius:9px}
+.clist{list-style:none;margin:0 -6px;padding:0;overflow:auto;flex:1;min-height:0;scrollbar-width:thin}
+.case{display:grid;grid-template-columns:1fr auto;gap:2px 8px;width:100%;border:0;border-top:1px solid var(--line);background:none;
+  padding:9px 8px;text-align:left;font:inherit;cursor:pointer;color:var(--ink)}
+.case:hover{background:var(--card-2)}
+.case[aria-current="true"]{background:color-mix(in srgb, var(--forest) 9%, transparent);box-shadow:inset 3px 0 0 var(--forest)}
+.case:focus-visible{border-radius:6px}
+.case .ct{grid-column:1/-1;font-size:12.5px;font-weight:600;line-height:1.3}
+.case .cm{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.case .cr{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.case .ch{display:flex;gap:8px;align-items:center;grid-column:1/-1}
+.case.dim{opacity:.55}
+.tcard{display:flex;flex-direction:column;min-height:240px;flex:1}
+.tfoot{font-size:11px;color:var(--muted);padding-top:8px}
+.empty{padding:18px 6px;color:var(--muted);text-align:center;font-size:12.5px;line-height:1.5}
+.sevrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 10px;font-size:12px;color:var(--muted)}
+
+/* legend (map layers popover) */
 .legend{display:flex;flex-direction:column;gap:2px}
 .lg-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;user-select:none}
 .lg-row:hover{background:var(--card-2)}
@@ -339,6 +410,7 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 .spark polyline{fill:none;stroke:var(--clay);stroke-width:1.6;vector-effect:non-scaling-stroke}
 .spark-l{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--muted);margin-top:2px}
 .poly.sel{stroke-width:3;fill-opacity:calc(var(--fill,.35) + .2)}
+.poly.sel.wide{fill-opacity:0}   /* a tile-spanning case: outline only, so its imagery stays readable */
 .halo{fill:none;stroke:#fff;stroke-width:7;stroke-opacity:.9;vector-effect:non-scaling-stroke;pointer-events:none}
 .unobs{fill:url(#hatch);stroke:var(--unobs);stroke-width:1.2;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
 .lg-row .sw.hatch{background:repeating-linear-gradient(45deg, var(--unobs) 0 1.5px, var(--unobs-bg) 1.5px 4px);border-color:var(--unobs)}
@@ -387,56 +459,134 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 .tip.on{opacity:1}
 .tip b{font-family:var(--mono);font-weight:600}
 
-/* inspector */
-.ins-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.ins-id{font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:-.02em;margin:2px 0 8px}
-.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+/* ---- Change-to-Action Card (#43) ---- */
 .stepper{display:flex;gap:4px;align-items:center}
-.stepper span{font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:4px}
+.stepper span{font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:4px;white-space:nowrap}
 .ibtn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--card-2);display:grid;place-items:center;cursor:pointer;color:var(--ink-2)}
 .ibtn:hover{background:#fff;color:var(--ink)}
 .ibtn:focus-visible{border-radius:9px}
-.tags{display:flex;flex-wrap:wrap;gap:6px}
 .tag{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:4px 10px;font-size:11.5px;font-weight:700;
   background:color-mix(in srgb, var(--c) 14%, transparent);color:var(--c)}
-.tag.plain{--c:var(--ink-2);font-weight:600}
-.summary{margin:10px 0 4px;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
-dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:0}
-dt,dd{padding:7px 0;border-top:1px solid var(--line);font-size:12px}
-dt{color:var(--muted);padding-right:12px}
-dd{margin:0;text-align:right;font-weight:600;min-width:0}
-dd.mono{font-weight:500}
-.bar{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-right:8px;overflow:hidden}
-.bar i{display:block;height:100%;background:var(--c)}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
-.abtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);background:var(--card-2);
-  border-radius:10px;padding:9px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-2)}
-.abtn:hover{background:#fff;color:var(--ink);border-color:var(--line-2)}
-.abtn:focus-visible{border-radius:10px}
-.abtn.primary{background:var(--forest);border-color:var(--forest);color:var(--btn-ink)}
-.abtn.primary:hover{background:var(--forest-h)}
-.abtn.good:hover{border-color:var(--moss);color:var(--moss)}
-.abtn.bad:hover{border-color:var(--crit);color:var(--crit)}
-.case-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.role{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.role select,.filters select{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:5px 8px;color:var(--ink)}
-.trail{list-style:none;margin:10px 0 8px;padding:0;font-size:11.5px;color:var(--ink-2);display:grid;gap:4px;max-height:96px;overflow:auto}
-.trail li{display:flex;gap:6px}.trail time{font-family:var(--mono);color:var(--faint);flex:none}
-.trail .empty{color:var(--muted)}
-#cMoves .abtn{white-space:normal}
-#cMoves .hint{grid-column:1/-1;font-size:11.5px;color:var(--muted);margin:0}
-.case-foot{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:10.5px;color:var(--faint)}
-.lnk{border:0;background:none;padding:0;font:inherit;font-size:11px;color:var(--ocean);cursor:pointer;text-decoration:underline}
-.filters{display:grid;grid-template-columns:1.4fr 1fr;gap:6px}
-.filters select{min-width:0;width:100%}
-.tcard table{table-layout:fixed}
-.tcard th:first-child{width:38%}.tcard th:last-child{width:24%}
-.tcard td{overflow:hidden;text-overflow:ellipsis}
-.filters .search{margin-bottom:8px}
-.st{display:inline-block;margin-left:6px;font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--card-2);color:var(--muted);vertical-align:1px}
-.st.ok{background:color-mix(in srgb, var(--moss) 18%, transparent);color:var(--forest)}
-.st.no{background:color-mix(in srgb, var(--crit) 14%, transparent);color:var(--crit)}
-.poly.dismissed{opacity:.28}
+.cac{padding:0;overflow:hidden}
+.cac-h{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;padding:14px 14px 10px}
+.cac-id{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.cac-what{margin:3px 0 7px;font-size:17px;line-height:1.25;font-weight:700;letter-spacing:-.01em;text-wrap:balance}
+.cac-badges{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.q{padding:11px 14px 12px;border-top:1px solid var(--line)}
+.q h3{margin:0 0 6px;font-size:12px;font-weight:700;color:var(--muted)}
+.q p{margin:0;font-size:13px;line-height:1.5;color:var(--ink)}
+.q ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:4px}
+.q li{font-size:12.5px;line-height:1.45;color:var(--ink-2);padding-left:14px;position:relative}
+.q li::before{content:"";position:absolute;left:3px;top:.6em;width:4px;height:4px;border-radius:50%;background:var(--faint)}
+.q li.flag{color:var(--crit)} .q li.flag::before{background:var(--crit);border-radius:1px;transform:rotate(45deg)}
+.rel{display:grid;grid-template-columns:76px 1fr;gap:7px 10px;margin:2px 0 0}
+.rel dt{font-size:11.5px;color:var(--muted);padding:1px 0 0;border:0}
+.rel dd{margin:0;padding:0;border:0;font-size:12.5px;line-height:1.45;font-weight:500;text-align:left;color:var(--ink-2)}
+.meter{position:relative;height:6px;border-radius:3px;background:var(--line);margin:5px 0 2px;max-width:220px}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--c,var(--forest))}
+.meter b{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);border-radius:1px}
+.callout{margin-top:9px;padding:8px 10px;border-radius:9px;border:1.4px dashed var(--unc);color:var(--unc);font-size:12px;line-height:1.45;font-weight:500}
+.next>p{font-weight:600}
+.acting{display:flex;align-items:center;gap:6px;margin:10px 0 8px;font-size:11.5px;color:var(--muted);flex-wrap:wrap}
+.acting select,.acting input{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:5px 7px;color:var(--ink);min-width:0}
+.acting input{flex:1;min-width:90px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.acts .abtn{white-space:normal;line-height:1.25;min-height:38px}
+.abtn[disabled]{opacity:.42;cursor:not-allowed}
+.abtn[disabled]:hover{background:var(--card-2);color:var(--ink-2);border-color:var(--line)}
+.acts .wide{grid-column:1/-1}
+.hint2{font-size:11.5px;color:var(--muted);margin:6px 0 0;line-height:1.45}
+.assign{display:none;grid-template-columns:1fr auto;gap:6px;margin-top:6px}
+.assign.on{display:grid}
+.assign select,.assign input{font:inherit;font-size:12px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:7px 8px;color:var(--ink);min-width:0}
+.note{width:100%;margin-top:6px;border:1px solid var(--line);background:var(--card-2);border-radius:9px;padding:8px 10px;font:inherit;font-size:12.5px;color:var(--ink)}
+.note:focus-visible{border-radius:9px}
+.hist{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:6px;font-size:11.5px;color:var(--ink-2)}
+.q .hist li{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;padding-left:0;font-size:11.5px}
+.q .hist li::before{display:none}
+.hist time{font-family:var(--mono);color:var(--faint);font-size:10.5px;padding-top:1px}
+.hist .ph{display:flex;gap:4px;grid-column:2;margin-top:3px}
+.hist .ph img{width:46px;height:46px;object-fit:cover;border-radius:6px;border:1px solid var(--line);cursor:zoom-in}
+.case-foot{display:flex;justify-content:space-between;gap:8px;margin-top:8px;font-size:10.5px;color:var(--faint);flex-wrap:wrap}
+.lnk{border:0;background:none;padding:0;font:inherit;font-size:11.5px;color:var(--ocean);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.field{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.field .abtn{text-decoration:none}
+.outbox{margin-top:8px;font-size:11.5px;color:var(--ink-2);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.outbox b{color:var(--clay)}
+details.more{border-top:1px solid var(--line)}
+details.more summary{padding:11px 14px;font-size:12.5px;font-weight:600;color:var(--ocean);cursor:pointer;list-style:none}
+details.more summary::-webkit-details-marker{display:none}
+details.more summary::before{content:"+";display:inline-block;width:14px;font-weight:700}
+details.more[open] summary::before{content:"\2212"}
+.more-b{padding:0 14px 14px}
+.more-b h4{margin:12px 0 4px;font-size:11.5px;font-weight:700;color:var(--muted)}
+dl.kv{margin:0;display:grid;grid-template-columns:auto 1fr;gap:0}
+dl.kv dt,dl.kv dd{padding:6px 0;border-top:1px solid var(--line);font-size:12px}
+dl.kv dt{color:var(--muted);padding-right:12px}
+dl.kv dd{margin:0;text-align:right;font-weight:600;min-width:0;overflow-wrap:anywhere}
+dl.kv dd.mono{font-weight:500;font-size:11.5px}
+.spark{display:block;width:100%;height:28px;overflow:visible}
+.spark polyline{fill:none;stroke:var(--clay);stroke-width:1.6;vector-effect:non-scaling-stroke}
+.spark-l{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--muted);margin-top:2px}
+
+/* ---- copilot (#45) ---- */
+.ask .chips{display:flex;flex-wrap:wrap;gap:6px}
+.chipq{border:1px solid var(--line);background:var(--card-2);border-radius:99px;padding:6px 10px;font:inherit;font-size:12px;font-weight:600;color:var(--ink-2);cursor:pointer;text-align:left}
+.chipq:hover{background:#fff;color:var(--ink);border-color:var(--line-2)}
+.askf{display:flex;gap:6px;margin-top:8px}
+.askf input{flex:1;min-width:0;border:1px solid var(--line);background:var(--card-2);border-radius:9px;padding:8px 10px;font:inherit;font-size:12.5px;color:var(--ink)}
+.askf input:focus-visible{border-radius:9px}
+.answer{margin-top:10px;display:grid;gap:8px}
+.answer[hidden]{display:none}
+.ans-q{font-size:12.5px;font-weight:700}
+.ans-g h4{margin:0 0 3px;font-size:11.5px;font-weight:700;color:var(--forest)}
+.ans-g.hyp h4{color:var(--unc)}
+.ans-g ul{list-style:none;margin:0;padding:0;display:grid;gap:4px}
+.ans-g li{font-size:12.5px;line-height:1.45;color:var(--ink-2);padding-left:10px;border-left:2px solid color-mix(in srgb, var(--forest) 40%, transparent)}
+.ans-g.hyp li{border-left:2px dashed color-mix(in srgb, var(--unc) 60%, transparent)}
+.ans-src{font-size:11px;color:var(--muted)}
+
+/* ---- map: layers popover, changed pixels, spotlight ---- */
+.lay-pop{position:absolute;z-index:9;right:54px;bottom:10px;width:256px;max-height:calc(100% - 20px);overflow:auto;background:var(--card);
+  border:1px solid var(--line-2);border-radius:14px;padding:12px;box-shadow:0 16px 40px rgba(30,38,32,.22);cursor:default}
+.lay-pop[hidden]{display:none}
+.lay-pop h3{margin:0 0 6px;font-size:12.5px}
+#spot{fill:rgba(24,30,26,.42);pointer-events:none}
+#heatImg{pointer-events:none}
+.lg-row .sw.heat{background:linear-gradient(90deg, rgba(255,196,61,.5), rgba(255,246,200,.95));border-color:var(--heat)}
+
+/* ---- time travel (#47) ---- */
+.tt{padding:10px 14px 12px}
+.tt[hidden]{display:none}
+.tt-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tt-h h3{margin:0}
+.tt-h .sub2{font-size:11.5px;color:var(--muted)}
+.tt-h .sub2 b{color:var(--ink);font-weight:700}
+.tt-h .abtn{margin-left:auto;padding:6px 11px}
+.tt-ticks{display:flex;gap:3px;margin-top:9px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
+.tick{flex:1 0 auto;min-width:46px;border:1px solid var(--line);background:var(--card-2);border-radius:8px;padding:5px 6px 4px;font:inherit;
+  font-size:11.5px;font-weight:600;color:var(--ink-2);cursor:pointer;text-align:center;line-height:1.15}
+.tick small{display:block;font-size:9.5px;font-weight:500;color:var(--muted);font-family:var(--mono)}
+.tick:hover{background:#fff}
+.tick:focus-visible{border-radius:8px}
+.tick[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:var(--btn-ink)}
+.tick[aria-pressed="true"] small{color:color-mix(in srgb, var(--btn-ink) 75%, transparent)}
+.tick.pair{box-shadow:inset 0 -2px 0 var(--ocean)}
+.tick.first{box-shadow:inset 0 -2px 0 var(--clay)}
+.tt-spark{display:block;width:100%;height:46px;margin-top:8px;overflow:visible}
+.tt-note{margin:4px 0 0;font-size:12px;color:var(--ink-2);line-height:1.45}
+.tt-leg{display:flex;gap:12px;flex-wrap:wrap;font-size:10.5px;color:var(--muted);margin-top:4px}
+.tt-leg i{display:inline-block;width:10px;height:3px;vertical-align:2px;margin-right:4px;background:var(--c)}
+
+/* ---- impact tracker (#48) ---- */
+.imp-figs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+.imp-figs div{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.imp-figs b{display:block;font-size:24px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.imp-figs span{font-size:11.5px;color:var(--muted)}
+.imp-trend{display:block;width:100%;height:56px;margin:4px 0 2px}
+.imp-trend rect{fill:var(--forest)}
+@media (max-width:560px){.imp-figs{grid-template-columns:1fr 1fr}}
+
 .adv{background:linear-gradient(0deg, color-mix(in srgb, var(--clay) 7%, var(--card)), var(--card))}
 .adv p{margin:0;font-size:13px;line-height:1.6;color:var(--ink-2)}
 .lookup{display:flex;gap:6px;margin-top:12px}
@@ -481,24 +631,43 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
 .toast.on{opacity:1;transform:translate(-50%,0)}
 
 @media (max-width:1180px){
-  .dbody{grid-template-columns:minmax(0,1fr) 320px;grid-template-areas:"center right" "left right"}
-  .left{flex-direction:row;overflow:visible} .left>.card{flex:1}
-  .center{min-height:560px}
+  .dbody{grid-template-columns:270px minmax(0,1fr);grid-template-areas:"left center" "right right"}
+  .right{flex-direction:row;flex-wrap:wrap;overflow:visible;align-items:flex-start}
+  .right>.card{flex:1 1 340px}
+  .dash{overflow:auto}
+  .dbody{min-height:100%}
+  .center{min-height:620px}
+  .mission{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
+/* phones: field verification mode (#31) - map, then the card, then the list; big touch targets */
 @media (max-width:820px){
   .dash{overflow:auto;display:block}
-  .dbody{display:flex;flex-direction:column}
-  .left{flex-direction:column}
+  .dbody{display:flex;flex-direction:column;padding:10px 16px 24px}
   .col{overflow:visible}
   .center{min-height:0;order:-1}
-  .map{flex:none;height:64vh}
-  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .tscroll{max-height:320px}
+  .right{order:0;flex-direction:column}
+  .right>.card{flex:none;width:100%}
+  .left{order:1}
+  .map{flex:none;height:52vh;min-height:300px}
+  .mission{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .mission .mfig:last-child{grid-column:1/-1}
+  .clist{max-height:none;overflow:visible}
+  .tcard{min-height:0}
+  .topbar{gap:6px 8px;padding:8px 12px}
   .tb-sep{display:none}
-  .tb-title{flex-basis:100%;order:3}
+  .tb-title{flex:1;min-width:0}
+  .tb-ctl{display:flex;gap:6px;flex-basis:100%;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .tb-ctl>*{flex:none}
+  .tb-ctl .analyst{display:none}
   .hint{display:none}
   .tl .mono,.tr .mono{display:none}
+  .overview{left:8px;right:8px;top:8px;bottom:8px;width:auto;padding:18px 16px}
+  .ov-sit{font-size:21px}
+  .ov-row b{font-size:28px}
+  .acts .abtn,.field .abtn,.vbtn,.case{min-height:44px}
+  .lay-pop{right:50px;width:min(256px, calc(100% - 64px))}
 }
+@media (max-width:520px){ .map .tl,.map .tr{display:none} }
 </style>
 
 <script>
@@ -559,45 +728,35 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
     </button>
     <span class="tb-sep"></span>
     <div class="tb-title"><div id="tbTitle"></div><div id="tbCoords"></div></div>
-    <div class="seg" role="group" aria-label="Sector" id="sectorSeg"></div>
-    <select class="city-pick" id="cityPick" aria-label="More OSCD cities" hidden></select>
-    <div class="seg" role="group" aria-label="Detection engine">
-      <button data-act="mode:ai">T.R.A.C.E. AI</button><button data-act="mode:naive">Naive NDVI</button>
+    <div class="tb-ctl">
+      <div class="seg" role="group" aria-label="Sector" id="sectorSeg"></div>
+      <select class="city-pick" id="cityPick" aria-label="More OSCD cities" hidden></select>
+      <div class="seg analyst" role="group" aria-label="Detection engine">
+        <button data-act="mode:ai">T.R.A.C.E. AI</button><button data-act="mode:naive">Naive NDVI</button>
+      </div>
+      <button class="pill" data-act="overview">Overview</button>
+      <button class="pill" data-act="impact">Team progress</button>
+      <button class="pill analyst" data-act="bench">Benchmark</button>
     </div>
-    <button class="pill" data-act="bench">Benchmark</button>
   </header>
 
   <div class="dbody">
     <aside class="col left">
-      <section class="card rise" style="--d:1">
-        <div class="card-h"><h3>Layers</h3>
-          <div class="seg seg-sm" role="group" aria-label="Priority mode" id="sevSeg"></div></div>
-        <div class="legend" id="legend"></div>
-        <label class="slider">Fill <input type="range" id="fill" min="0" max="80" value="35" aria-label="Polygon fill opacity"></label>
-      </section>
-      <section class="card tcard rise" style="--d:2">
-        <div class="card-h"><span>Detections</span><span class="mono" id="tCount"></span></div>
-        <div class="filters"><input class="search" id="search" type="search" placeholder="Filter by ID or change type" aria-label="Filter detections">
-          <select class="search" id="stateF" aria-label="Filter by case state"></select></div>
-        <div class="tscroll">
-          <table>
-            <thead><tr>
-              <th><button data-sort="id">ID</button></th>
-              <th><button data-sort="tier">Type</button></th>
-              <th class="num"><button data-sort="area">Area m²</button></th>
-            </tr></thead>
-            <tbody id="tbody"></tbody>
-          </table>
-        </div>
+      <section class="card tcard rise" style="--d:1" aria-label="Cases">
+        <div class="card-h"><h3 style="margin:0">Cases</h3><span class="mono" id="tCount"></span></div>
+        <div class="sevrow"><span>Rank for</span><div class="seg seg-sm" role="group" aria-label="Priority mode" id="sevSeg"></div></div>
+        <div class="views" id="views" role="group" aria-label="Case views"></div>
+        <input class="search" id="search" type="search" placeholder="Search ID, type or place" aria-label="Search cases">
+        <ol class="clist" id="clist" aria-label="Case list"></ol>
       </section>
     </aside>
 
     <section class="center">
-      <div class="kpis" id="kpis"></div>
+      <div class="mission" id="mission" aria-label="Situation"></div>
       <div class="map" id="map" data-view="swipe">
         <div class="layer" id="layT1"><div class="world"><img id="imgT1" alt="Before imagery" draggable="false"></div></div>
         <div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
-        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern></defs><g id="unL"></g><g id="refL"></g><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
+        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern><clipPath id="selClip" clipPathUnits="userSpaceOnUse"><polygon id="selClipP" points=""/></clipPath></defs><g id="unL"></g><g id="refL"></g><g id="faL"></g><path id="spot" fill-rule="evenodd" d=""/><g id="ftL"></g><image id="heatImg" x="0" y="0" width="100" height="100" preserveAspectRatio="none" clip-path="url(#selClip)"/></svg><div id="pins"></div></div></div>
         <div class="curtain" id="curtain"><div class="knob ctl" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
@@ -609,43 +768,37 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
         <div class="ctl bl">
           <div class="scalebar"><i id="sbBar"></i><span id="sbTxt"></span></div>
           <span class="chip coords" id="coords">Hover for coordinates</span>
-          <span class="hint">Scroll to zoom · drag to pan · ←/→ cycle · F fit</span>
+          <span class="hint">Scroll to zoom · drag to pan · ←/→ next case · F fit</span>
         </div>
         <div class="ctl br">
+          <button class="zbtn" data-act="layers" aria-label="Map layers" aria-expanded="false" aria-controls="layPop" title="Map layers">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5z"/><path d="m3 13 9 5 9-5"/></svg></button>
           <button class="zbtn" data-act="zoom:in" aria-label="Zoom in">+</button>
           <button class="zbtn" data-act="zoom:out" aria-label="Zoom out">−</button>
           <button class="zbtn" data-act="zoom:fit" aria-label="Fit to tile">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         </div>
+        <div class="lay-pop ctl" id="layPop" hidden>
+          <h3>Map layers</h3>
+          <div class="legend" id="legend"></div>
+          <label class="slider">Fill <input type="range" id="fill" min="0" max="80" value="35" aria-label="Polygon fill opacity"></label>
+        </div>
         <div class="tip" id="tip"></div>
+        <section class="overview ctl" id="overview" hidden aria-labelledby="ovSit"></section>
       </div>
+      <section class="card tt" id="tt" hidden aria-label="Time travel"></section>
     </section>
 
     <aside class="col right">
-      <section class="card rise" style="--d:2">
-        <div class="ins-top">
-          <div><div class="eyebrow">Selected change</div><div class="ins-id" id="iId"></div></div>
-          <div class="stepper"><span id="iPos"></span>
-            <button class="ibtn" data-act="sel:prev" aria-label="Previous detection"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
-            <button class="ibtn" data-act="sel:next" aria-label="Next detection"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
-          </div>
-        </div>
-        <div class="tags" id="iTags"></div>
-        <p class="summary" id="iSum"></p>
-        <dl id="iProps"></dl>
-        <div class="actions">
-          <button class="abtn primary" data-act="focus">Zoom to change</button>
-          <button class="abtn" data-act="copy">Copy coordinates</button>
-        </div>
-      </section>
-      <section class="card rise" style="--d:3">
-        <div class="card-h"><span>Case</span><span class="mono" id="vBadge"></span></div>
-        <div class="case-top"><span class="tag" id="cState"></span>
-          <label class="role">Acting as <select id="role" aria-label="Role"></select></label></div>
-        <ol class="trail" id="cTrail"></ol>
-        <input class="search" id="cNote" type="text" placeholder="Note for the audit log (optional)" aria-label="Case note">
-        <div class="actions" id="cMoves"></div>
-        <div class="case-foot"><button class="lnk" data-act="case-undo">Undo last action</button><span>Roles are local to this browser, not authenticated.</span></div>
+      <section class="card cac rise" style="--d:2" id="cac" aria-label="Selected case"></section>
+      <section class="card ask rise" style="--d:3" aria-labelledby="askH">
+        <h3 id="askH">Explain this change</h3>
+        <div class="chips" id="askChips"></div>
+        <form class="askf" id="askForm" autocomplete="off">
+          <input id="askIn" type="text" placeholder="Ask about this case" aria-label="Ask about this case" maxlength="300">
+          <button class="abtn" type="submit">Ask</button>
+        </form>
+        <div class="answer" id="answer" role="status" aria-live="polite" hidden></div>
       </section>
       <section class="card adv rise" style="--d:4">
         <div class="card-h"><span id="advTitle"></span>
@@ -666,14 +819,33 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
           <button class="abtn" data-act="dl:gpkg">GeoPackage<small>.gpkg</small></button>
           <button class="abtn" data-act="dl:cap">CAP alert<small id="capId"></small></button>
           <button class="abtn" data-act="dl:sitrep">SitRep<small>.pdf</small></button>
-          <button class="abtn" data-act="dl:csv">Filtered table<small>.csv</small></button>
-          <button class="abtn" data-act="dl:audit">Audit log<small>.json</small></button>
-          <button class="abtn" data-act="dl:verdicts" style="grid-column:1/-1">Officer verdicts (training data)<small>.json</small></button>
+          <button class="abtn" data-act="dl:csv">Case list<small>.csv</small></button>
+          <button class="abtn" data-act="dl:audit">Decision history<small>.json</small></button>
+          <button class="abtn" data-act="dl:verdicts">Officer verdicts<small>.json</small></button>
+          <button class="abtn" data-act="dl:pack">Field pack<small>.json</small></button>
+          <button class="abtn" data-act="pack-import" style="grid-column:1/-1">Import a field pack</button>
         </div>
       </section>
     </aside>
   </div>
 </div>
+<input type="file" id="photoIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="packIn" accept=".json,application/json" hidden>
+
+<dialog id="impact" aria-labelledby="impactH">
+  <div class="dlg">
+    <div class="dlg-h"><h2 id="impactH">Team progress</h2><button class="ibtn" data-act="impact-close" aria-label="Close">✕</button></div>
+    <p>Decisions and site visits recorded in the case history, across every area. These are process measures: they count work done, not damage prevented.</p>
+    <div class="seg" role="group" aria-label="Period" id="impPeriod"><button data-act="imp:7">Last 7 days</button><button data-act="imp:30">Last 30 days</button><button data-act="imp:all">All time</button></div>
+    <div class="imp-figs" id="impFigs"></div>
+    <div id="impTrend"></div>
+    <div class="stress-h"><h3>Oldest open cases</h3></div>
+    <table><thead><tr><th>Case</th><th>Area · zone</th><th>Team</th><th>Status</th><th class="num">Days open</th></tr></thead><tbody id="impOld"></tbody></table>
+    <div class="stress-h"><h3>By zone and team</h3></div>
+    <table><thead><tr><th>Zone or team</th><th class="num">Open</th><th class="num">Closed</th><th class="num">Median days open</th></tr></thead><tbody id="impBy"></tbody></table>
+    <div class="exports" style="margin-top:14px"><button class="abtn" data-act="dl:impact">Export for administrators<small>.csv</small></button></div>
+  </div>
+</dialog>
 
 <dialog id="bench" aria-labelledby="benchH">
   <div class="dlg">
@@ -707,6 +879,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
 </dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<script>/*__CASELOGIC__*/</script>
 <script>
 /* ============================================================
    DATA + CONSTANTS
@@ -791,34 +964,128 @@ const latLon = (b, x, y) => [b.n - y/100*(b.n-b.s), b.w + x/100*(b.e-b.w)];   //
 const fLat = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'N':'S'}`;
 const fLon = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'E':'W'}`;
 
-const S = {th:KEYS[0], role:(() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), stF:'all', sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), hideRef:false, q:'', sort:{k:'area', d:-1}, stage:'hero'};
+const store = {
+  get: (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const ROLES = ['Analyst','Field officer','DDMA'];
+const PROFILE = store.get('ci-profile', null) || {role: (() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), name: ''};
+if (!ROLES.includes(PROFILE.role)) PROFILE.role = 'Analyst';
+const S = {th:KEYS[0], sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), hideRef:false, q:'',
+  av:'matters', stage:'hero', tt:null, spot:true, heat:true, seen:new Set()};
 const sc = () => D.scenes[S.th];
-// creep & precursor polygons (multi-year series) join the detection list when their layer is on
+// creep & precursor polygons (multi-year series) join the case list when their layer is on
 const creepFeats = () => (sc().creep && !S.hideCreep) ? sc().creep.features : [];
 const feats = () => sc().features.concat(creepFeats());
 const FA = () => sc().naive.false_alarms;
-/* Officer case workflow (Ideation Baseline #13, browser-only). The audit log is the single source of truth:
-   a case's state is the "to" of its last entry. */
+
+/* Officer case workflow (#13, #44). The decision history is the single source of truth: a case's status is the
+   "to" of its last entry, its assignee the last assignment. Entries are append-only (undo appends a reversal),
+   carry a uid so phones and the analyst desk can merge them (#31 sync), and stay in this browser until synced. */
 const CASE_STATES = ['New','Under review','Field verification','Confirmed','Reported','Resolved','Dismissed'];
-const CASE_MOVES = [   // from, to, role allowed, button label
-  ['New','Under review','Analyst','Start review'],
-  ['Under review','Field verification','Analyst','Send for field check'],
-  ['Under review','Dismissed','Analyst','Dismiss as false alarm'],
-  ['Field verification','Confirmed','Field officer','Confirm on site'],
-  ['Field verification','Dismissed','Field officer','Not found on site'],
-  ['Confirmed','Reported','DDMA','Report / file with DDMA'],
-  ['Reported','Resolved','DDMA','Mark resolved'],
-  ['Dismissed','Under review','Analyst','Reopen'],
-];
-const ROLES = ['Analyst','Field officer','DDMA'];
-const VERIFIED = new Set(['Confirmed','Reported','Resolved']);
-const ST_SHORT = {'Under review':['REV',''], 'Field verification':['FLD',''], Confirmed:['✓','ok'], Reported:['RPT','ok'], Resolved:['RES','ok'], Dismissed:['✕','no']};
-let audit = [];
-try { audit = JSON.parse(localStorage.getItem('ci-audit') || '[]'); } catch (e) {}
-const saveAudit = () => { try { localStorage.setItem('ci-audit', JSON.stringify(audit)); } catch (e) {} };
+const VERIFIED = CaseLogic.VERIFIED;
+const OPENING = ['New','Under review','Field verification'];
+const ACTIONS = {   // #44: the four decisions, then the DDMA steps that follow a confirmation
+  confirm: {label:r => r === 'Field officer' ? 'Confirmed on site' : 'Confirm change', to:'Confirmed', from:OPENING, roles:['Analyst','Field officer'], tone:'good', done:'confirmed'},
+  dismiss: {label:r => r === 'Field officer' ? 'Not found on site' : 'Mark as false alarm', to:'Dismissed', from:OPENING, roles:['Analyst','Field officer'], tone:'bad', done:'marked as a false alarm'},
+  inspect: {label:() => 'Request field inspection', to:'Field verification', from:['New','Under review'], roles:['Analyst','DDMA'], done:'sent for field inspection'},
+  assign:  {label:() => 'Assign case', from:['New','Under review','Field verification','Confirmed','Reported'], roles:['Analyst','DDMA'], done:'assigned'},
+  report:  {label:() => 'Report to DDMA', to:'Reported', from:['Confirmed'], roles:['DDMA'], done:'reported to the DDMA'},
+  resolve: {label:() => 'Mark resolved', to:'Resolved', from:['Reported'], roles:['DDMA'], done:'resolved'},
+  reopen:  {label:() => 'Reopen case', to:'Under review', from:['Dismissed','Resolved'], roles:['Analyst','DDMA'], done:'reopened'},
+};
+const newId = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+let audit = store.get('ci-audit', []);
+audit.forEach(e => { e.uid = e.uid || newId(); e.action = e.action || `${e.from} to ${e.to}`; });
+const saveAudit = () => store.set('ci-audit', audit);
 const caseLog = (f, th = S.th) => audit.filter(e => e.sector === th && e.case === f.id);
-const caseState = f => { const l = caseLog(f); return l.length ? l[l.length - 1].to : 'New'; };
-const stChip = f => { const st = ST_SHORT[caseState(f)]; return st ? `<span class="st ${st[1]}" title="${caseState(f)}">${st[0]}</span>` : ''; };
+const caseState = (f, th) => { const l = caseLog(f, th); return l.length ? l[l.length - 1].to : 'New'; };
+const assigneeOf = (f, th) => { const a = caseLog(f, th).filter(e => 'assignee' in e).pop(); return a ? a.assignee : null; };
+const actorName = () => PROFILE.name.trim() || PROFILE.role;
+function record(f, fields){
+  const st = caseState(f);
+  const e = {uid:newId(), ts:new Date().toISOString(), sector:S.th, case:f.id, from:st, to:st, role:PROFILE.role, actor:actorName(), ...fields};
+  audit.push(e); saveAudit(); Sync.soon();
+  return e;
+}
+// designations, not people: Mumbai's BMC wards around Chembur-Ghatkopar, a generic team elsewhere
+const ROSTER = th => /^mumbai/.test(th)
+  ? ['Ward officer, L ward (Kurla)', 'Ward officer, M/East ward (Govandi–Mankhurd)', 'Ward officer, M/West ward (Chembur)', 'Ward officer, N ward (Ghatkopar)', 'DDMA field team, Mumbai Suburban']
+  : D.scenes[th].event ? ['District control room', 'Field team 1', 'Field team 2', 'SDRF liaison'] : ['Field team 1', 'Field team 2', 'Planning office'];
+let rosterExtra = store.get('ci-roster', []);
+
+/* Site photos (#31) live in IndexedDB: localStorage is too small. Offline-first: nothing here needs a network. */
+const PhotoDB = (() => {
+  let dbp = null;
+  const open = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('trace-field', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('photos', {keyPath:'id'});
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+  const run = (mode, fn) => open().then(db => new Promise((res, rej) => {
+    const t = db.transaction('photos', mode), req = fn(t.objectStore('photos'));
+    t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error);
+  }));
+  return {put:p => run('readwrite', s => s.put(p)), get:id => run('readonly', s => s.get(id)), all:() => run('readonly', s => s.getAll())};
+})();
+const photoCache = new Map();
+async function photoURL(id){
+  if (photoCache.has(id)) return photoCache.get(id);
+  let p = null;
+  try { p = await PhotoDB.get(id); } catch (e) {}
+  if (!p && Sync.server) { try { const r = await fetch(`api/field/photo/${encodeURIComponent(id)}`); if (r.ok) { p = await r.json(); PhotoDB.put(p).catch(() => {}); } } catch (e) {} }
+  const url = p ? p.data : null; photoCache.set(id, url); return url;
+}
+function downsize(file, max = 1280){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      res(c.toDataURL('image/jpeg', 0.72));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('not an image')); };
+    img.src = url;
+  });
+}
+
+/* Sync (#31): when the console is served by src/server/app.py and online, the outbox goes to /api/field/sync
+   and everyone else's entries come back. Opened as a file or offline, the outbox waits; a field pack (.json)
+   carries it by hand. */
+const Sync = {
+  server:false, synced:new Set(store.get('ci-synced', [])), t:null,
+  pending(){ return audit.filter(e => !this.synced.has(e.uid)); },
+  merge(entries){
+    const have = new Set(audit.map(e => e.uid)); let n = 0;
+    entries.forEach(e => { if (e && e.uid && !have.has(e.uid) && e.case && e.to) { audit.push(e); n++; } });
+    if (n) { audit.sort((a, b) => a.ts.localeCompare(b.ts)); saveAudit(); }
+    return n;
+  },
+  soon(){ clearTimeout(this.t); this.t = setTimeout(() => this.push(), 800); renderOutbox(); },
+  async push(){
+    if (!this.server || !navigator.onLine) { renderOutbox(); return false; }
+    try {
+      const photos = (await PhotoDB.all().catch(() => [])).filter(p => !this.synced.has(p.id));
+      const sent = this.pending();
+      const r = await fetch('api/field/sync', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({entries:sent, photos})});
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      sent.forEach(e => this.synced.add(e.uid)); photos.forEach(p => this.synced.add(p.id));
+      const got = this.merge(j.entries); j.entries.forEach(e => this.synced.add(e.uid));
+      store.set('ci-synced', [...this.synced]);
+      if (got && S.stage === 'dash') { renderCases(); renderMission(); renderMap(); renderCard(); toast(`Synced: ${got} new decision${got === 1 ? '' : 's'} from the team`); }
+      renderOutbox(); return true;
+    } catch (e) { renderOutbox(); return false; }
+  },
+  async probe(){
+    if (!location.protocol.startsWith('http')) return;
+    try { const r = await fetch('api/health'); this.server = r.ok; } catch (e) { this.server = false; }
+    if (this.server) { this.push(); setInterval(() => this.push(), 30000); }
+  },
+};
+addEventListener('online', () => Sync.push());
+addEventListener('offline', () => renderOutbox());
 
 function toast(msg){
   const t = $('#toast'); t.textContent = msg; t.classList.add('on');
@@ -929,6 +1196,7 @@ async function fly(th, dir){
 
   const finishIn = () => {
     dash.classList.add('on'); S.stage = 'dash';
+    showOverview(true);   // #41: the overview opens where the globe lands
     setTimeout(() => { tile.style.opacity = 0; Globe.show(false); cv.style.filter = ''; cv.style.opacity = ''; }, 460);
     flying = false;
   };
@@ -1016,7 +1284,10 @@ function flyToFeature(i){
   const r = map.getBoundingClientRect();
   const s = clamp(Math.min(r.width/(bw || 1), r.height/(bh || 1))*0.4, V.fit*1.5, V.fit*12);
   const cx = (Math.max(...xs) + Math.min(...xs))/2, cy = (Math.max(...ys) + Math.min(...ys))/2;
-  V.s = s; V.x = r.width/2 - cx*s; V.y = r.height/2 - cy*s;
+  // #42: the case lands under the swipe divider, so the before/after split falls on it without another click
+  const sx = S.view === 'swipe' ? r.width * (S.curtain || 50) / 100 : r.width / 2;
+  // ...and above the divider's knob (at mid-height), so the knob never covers it
+  V.s = s; V.x = sx - cx*s; V.y = r.height*0.38 - cy*s;
   applyView(true);
 }
 function setCurtain(p){
@@ -1068,6 +1339,7 @@ function endPtr(e){
 }
 addEventListener('pointerup', endPtr); addEventListener('pointercancel', endPtr);
 map.addEventListener('wheel', e => {
+  if (e.target.closest('.ctl')) return;   // let the overview and layer panels scroll
   e.preventDefault(); const r = map.getBoundingClientRect();
   zoomAt(Math.exp(-e.deltaY*0.0018), e.clientX - r.left, e.clientY - r.top, false);
 }, {passive:false});
@@ -1091,22 +1363,58 @@ map.addEventListener('pointerleave', () => { $('#tip').classList.remove('on'); $
 /* ============================================================
    RENDERING
    ============================================================ */
-function rows(){
-  const q = S.q, {k, d} = S.sort;
+/* ---------- one facts bundle per case: the list, the card and the copilot all read it (web/caselogic.js) ---------- */
+const factsOf = (f, th = S.th) => CaseLogic.facts(f, D.scenes[th], {mode:S.sev, weights:D.severity.weights, state:caseState(f, th),
+  assignee:assigneeOf(f, th), log:caseLog(f, th), fragments:f._frags || []});
+const ST_ICON = {New:'○', 'Under review':'◐', 'Field verification':'⌖', Confirmed:'✓', Reported:'↗', Resolved:'●', Dismissed:'✕'};
+// decision times are stored in UTC (ISO) and shown in the officer's local time
+const MON3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const localTs = iso => { const d = new Date(iso), p = n => String(n).padStart(2, '0'); return `${d.getDate()} ${MON3[d.getMonth()]} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const localDay = iso => { const d = new Date(iso); return `${d.getDate()} ${MON3[d.getMonth()]} ${d.getFullYear()}`; };
+const stMark = st => `<span class="stm" data-s="${st}"><i aria-hidden="true">${ST_ICON[st]}</i>${st}</span>`;
+const tierMark = (t, suffix = '') => `<span class="tierm" data-t="${t}">${t}${suffix}</span>`;
+const isOpen = f => !['Dismissed', 'Resolved'].includes(caseState(f));
+const redundant = f => !!(f.part_of || f.dup_of);
+const urgent = f => f.tier === 'Critical' || f.tier === 'High';
+const areaText = a => a >= 1e6 ? `${fmt(a / 1e6, 2)} km² (${fmt(a / 1e4)} ha)` : a >= 10000 ? `${fmt(a / 1e4, 2)} ha (${fmt(a)} m²)` : `${fmt(a)} m²`;
+const placeText = f => f.place ? `${f.place.name}` : '';
+
+/* ---------- attention views (#46) ---------- */
+const VIEWS = {
+  // the default (#46): only what needs a decision now - urgent cases, cases already in progress, and possible
+  // encroachment inside a protected or water buffer. Uncertain low-tier cases wait in their own view.
+  matters:   {label:'What matters', hint:'Urgent, in progress, or possible encroachment in a protected buffer',
+              test:f => OPENING.includes(caseState(f)) && !redundant(f) && (urgent(f) || caseState(f) !== 'New'
+                || (f.zone >= 0.5 && CaseLogic.BUILT.has(f.type) && f.tier !== 'Low'))},
+  high:      {label:'High priority', hint:'Critical and high, still open', test:f => isOpen(f) && !redundant(f) && urgent(f)},
+  uncertain: {label:'Uncertain', hint:'Near the threshold, hard to compare, maybe seasonal, or beside cloud', test:f => isOpen(f) && f._unc.length > 0},
+  verify:    {label:'Needs verification', hint:'Not yet confirmed or dismissed', test:f => OPENING.includes(caseState(f)) && !redundant(f)},
+  mine:      {label:'Assigned to me', hint:'Your site visits', test:f => isOpen(f) && (assigneeOf(f) === actorName()
+                || (PROFILE.role === 'Field officer' && caseState(f) === 'Field verification'))},
+  all:       {label:'All changes', hint:'Everything detected, fragments and duplicates included', test:() => true},
+};
+const showMine = () => PROFILE.role === 'Field officer' || feats().some(f => assigneeOf(f) === actorName());
+const firstSeenDate = f => {
+  const t = f.temporal, tl = sc().timeline;
+  return t && t.first_seen != null && tl ? tl.frames[t.first_seen].date : (sc().iso_dates ? sc().iso_dates[1] : '9999');
+};
+// priority first, then age (oldest change first), then score
+const byPriority = (a, b) => tierRank(b.f.tier) - tierRank(a.f.tier) || firstSeenDate(a.f).localeCompare(firstSeenDate(b.f)) || b.f.score - a.f.score;
+function viewRows(view = S.av){
+  const q = S.q, v = VIEWS[view] || VIEWS.all;
   return feats().map((f, i) => ({f, i}))
-    .filter(({f}) => !S.hidden.has(f.tier) && (!q || `${f.id} ${f.type} ${f.tier}`.toLowerCase().includes(q))
-      && (S.stF === 'all' || (S.stF === 'open' ? !['Dismissed', 'Resolved'].includes(caseState(f)) : caseState(f) === S.stF)))
-    .sort((a, b) => d*(k === 'area' ? a.f.area_sqm - b.f.area_sqm
-                     : k === 'tier' ? tierRank(a.f.tier) - tierRank(b.f.tier) || a.f.area_sqm - b.f.area_sqm
-                     : a.f.id.localeCompare(b.f.id)));
+    .filter(({f}) => v.test(f) && (!q || `${f.id} ${f.type} ${CaseLogic.PLAIN[f.type] || ''} ${f.tier} ${placeText(f)} ${caseState(f)}`.toLowerCase().includes(q)))
+    .sort(byPriority);
 }
+
 function renderHeader(){
   const g = sc(), b = g.bounds;
   $('#tbTitle').textContent = `${g.label} · ${g.sensor}`;
   if ($('#cityPick')) { $('#cityPick').value = MORE.includes(S.th) ? S.th : ''; $('#cityPick').classList.toggle('on', MORE.includes(S.th)); }
   $('#sevSeg').innerHTML = Object.entries(SEV_MODES).map(([k, l]) => `<button data-act="sev:${k}">${l}</button>`).join('');
-  $('#tbCoords').textContent = `${fLat(b.n)} – ${fLat(b.s)} · ${fLon(b.w)} – ${fLon(b.e)}`;
-  [$('#d1').textContent, $('#d2').textContent] = g.dates;
+  $('#tbCoords').textContent = `${g.dates[0]} → ${g.dates[1]} · ${fLat(b.n)} – ${fLat(b.s)}`;
+  $('#d1').textContent = g.dates[0];
+  $('#d2').textContent = S.tt != null && g.timeline ? g.timeline.frames[S.tt].label : g.dates[1];
   $$('[data-act]').forEach(b => {
     const [k, v] = b.dataset.act.split(':');
     const key = {th:'th', mode:'mode', lang:'lang', view:'view', sev:'sev'}[k];
@@ -1114,32 +1422,79 @@ function renderHeader(){
   });
   map.dataset.view = S.view; map.classList.toggle('naive', S.mode === 'naive');
 }
-function renderKpis(){
-  const fs = feats(), nv = sc().naive, naive = S.mode === 'naive';
-  const sum = a => a.reduce((t, f) => t + f.area_sqm, 0), area = sum(fs);
-  const crit = fs.filter(f => f.tier === 'Critical').length, high = fs.filter(f => f.tier === 'High').length;
-  const det = sc().detector || {name: 'BIT', benchmark: 'LEVIR-CD', f1: AI.f1_score};
-  const detVal = det.f1 != null ? pct(det.f1) : 'Validated';
-  const detFull = `${det.name} · ${det.benchmark}`;
-  const shortName = det.track === 'E'
-    ? (sc().event === 'wildfire' ? 'Burn dNBR ≥ 0.27' : 'Water MNDWI > 0')
-    : (det.track === 'B' ? 'Track B S2 MLP' : 'Track A BIT');
-  const shortBench = det.track === 'E' ? 'Copernicus EMS' : (det.benchmark || '').split(',')[0];
-  const detSub = `${shortName} · ${shortBench}`;
-  const k = naive ? [
-    ['Regions flagged', fmt(nv.regions), '', `|ΔNDVI| > ${nv.threshold} · no filtering`],
-    ['Area flagged', fmt(nv.area_sqm), 'm²', `${fmt(nv.area_sqm/area || 0, 1)}× T.R.A.C.E. area`],
-    ['False alarms', fmt(nv.false_alarms.length), '', nv.reference === 'ground truth' ? 'off ground truth' : 'unconfirmed by T.R.A.C.E.'],
-    ['Baseline method', 'Naive NDVI', '', 'Fixed threshold · no learning'],
-  ] : [
-    ['Detections', fs.length, fs.length === 1 ? 'polygon' : 'polygons', `vs ${fmt(nv.regions)} naive regions`],
-    ['Changed area', fmt(area), 'm²', `${fmt(area/10000, 2)} ha, UTM metric` + (sc().unobservable?.pct > 0 ? ` · ${sc().unobservable.pct.toFixed(1)}% not observable` : '')],
-    ['Priority sites', crit + high, '', `${crit} critical · ${high} high`],
-    ['Detector', detVal, det.f1 != null ? 'F1' : '', detSub, detFull],
-  ];
-  $('#kpis').innerHTML = k.map(([l, v, u, s, full], i) =>
-    `<div class="kpi rise" style="--d:${i}"><div class="kpi-l">${l}</div><div class="kpi-v"${i === 3 || (naive && i === 2) ? ` style="color:${naive ? 'var(--fa)' : 'var(--forest)'}"` : ''}>${v}${u ? `<small>${u}</small>` : ''}</div><div class="kpi-s" title="${xmlEsc(full || s)}">${xmlEsc(s)}</div></div>`).join('');
+
+/* ---------- situation figures (#41): the strip above the map and the overview share them ---------- */
+function situation(){
+  const fs = feats().filter(f => !redundant(f) && caseState(f) !== 'Dismissed');
+  const area = fs.reduce((t, f) => t + f.area_sqm, 0);
+  const merged = feats().filter(redundant).length;
+  return {n:fs.length, area, merged, high:viewRows('high').length, verify:viewRows('verify').length,
+          unc:viewRows('uncertain').length, matters:viewRows('matters').length, unobs:sc().unobservable ? sc().unobservable.pct : 0};
 }
+const areaShort = a => a >= 1e6 ? `${fmt(a / 1e6, 1)} km²` : `${fmt(a / 1e4, 1)} ha`;
+function renderMission(){
+  const el = $('#mission');
+  if (S.mode === 'naive') {
+    const nv = sc().naive, ai = feats().reduce((t, f) => t + f.area_sqm, 0);
+    el.innerHTML = [[fmt(nv.regions), `regions flagged by |ΔNDVI| > ${nv.threshold}`], [areaShort(nv.area_sqm), `flagged, ${fmt(nv.area_sqm / ai || 0, 1)}× T.R.A.C.E.`],
+      [fmt(nv.false_alarms.length), nv.reference === 'ground truth' ? 'false alarms vs ground truth' : 'not confirmed by T.R.A.C.E.'], ['Naive NDVI', 'fixed threshold, no learning']]
+      .map(([v, l]) => `<div class="mfig static"><b style="--c:var(--fa)">${v}</b><span>${l}</span></div>`).join('');
+    return;
+  }
+  const s = situation();
+  const tile = (v, l, view, c, title) => `<button class="mfig" data-act="av:${view}" aria-pressed="${S.av === view}" title="${xmlEsc(title || l)}"><b${c ? ` style="--c:${c}"` : ''}>${v}</b><span>${l}</span></button>`;
+  el.innerHTML = tile(s.n, `changes · ${areaShort(s.area)}`, 'all', null, 'Show all changes')
+    + tile(s.high, 'high priority', 'high', 'var(--high)', 'Show critical and high-priority cases')
+    + tile(s.verify, 'to verify', 'verify', 'var(--ocean)', 'Show cases not yet confirmed or dismissed')
+    + tile(s.unc, 'uncertain', 'uncertain', 'var(--unc)', 'Show cases that need a closer look')
+    + `<button class="mfig" data-act="unobs-toggle" title="Cloud, shadow or missing data: never counted as no change"><b style="--c:var(--unobs)">${fmt(s.unobs, 1)}%</b><span>not observable</span></button>`;
+}
+function renderOverview(){
+  const el = $('#overview'); if (el.hidden) return;
+  const g = sc(), s = situation(), ev = !!g.event;
+  const lead = ev ? `${areaShort(s.area)} affected between ${g.dates[0]} and ${g.dates[1]}.` : `${s.n} change${s.n === 1 ? '' : 's'} between ${g.dates[0]} and ${g.dates[1]}.`;
+  const tail = s.matters ? ` ${s.matters} need${s.matters === 1 ? 's' : ''} a decision first.` : ' Nothing needs a decision right now.';
+  const row = (d, v, c, label, sub, act) => `<li><${act ? `button class="ov-row" data-act="${act}"` : 'div class="ov-row static"'} style="--d:${d}"><b${c ? ` style="--c:${c}"` : ''}>${v}</b><span>${label}<small>${sub}</small></span>${act ? '<em>Show</em>' : '<em></em>'}</${act ? 'button' : 'div'}></li>`;
+  el.innerHTML = `<div class="ov-place">${xmlEsc(g.place)}</div><div class="ov-dates">${xmlEsc(g.sensor)} · ${g.dates[0]} → ${g.dates[1]}</div>
+    <h2 class="ov-sit" id="ovSit">${lead}${tail}</h2>
+    <ul class="ov-rows">
+      ${row(0, s.n, null, 'changes detected', `${areaShort(s.area)} in total${s.merged ? ` · ${s.merged} fragments and repeats folded into their cases` : ''}`, 'ov:all')}
+      ${row(1, s.high, 'var(--high)', 'high-priority sites', 'critical and high, still open', 'ov:high')}
+      ${row(2, s.verify, 'var(--ocean)', 'awaiting verification', 'not yet confirmed or dismissed by an officer', 'ov:verify')}
+      ${row(3, s.unc, 'var(--unc)', 'uncertain', 'near the threshold, maybe seasonal, or beside cloud', 'ov:uncertain')}
+      ${row(4, `${fmt(s.unobs, 1)}%`, 'var(--unobs)', 'not observable', 'cloud, shadow or no data: never counted as no change', null)}
+    </ul>
+    <div class="ov-acts"><button class="abtn primary" data-act="ov:matters">Start with what matters</button><button class="abtn" data-act="ov:close">Explore the map</button></div>
+    <label class="ov-area">Area <select id="ovArea" aria-label="Choose an area">${KEYS.map(k => `<option value="${k}"${k === S.th ? ' selected' : ''}>${xmlEsc(city(k))} · ${xmlEsc(D.scenes[k].place)}</option>`).join('')}</select></label>`;
+}
+function showOverview(on){
+  const el = $('#overview');
+  el.hidden = !on; el.classList.remove('show');
+  if (on) { renderOverview(); void el.offsetWidth; el.classList.add('show'); setTimeout(() => el.querySelector('.abtn.primary')?.focus({preventScroll:true}), 60); }
+}
+
+/* ---------- case list ---------- */
+const LIST_STEP = 150;
+function renderViews(){
+  const ids = Object.keys(VIEWS).filter(k => k !== 'mine' || showMine());
+  $('#views').innerHTML = ids.map(k => `<button class="vbtn" data-act="av:${k}" aria-pressed="${S.av === k}" title="${VIEWS[k].hint}"><span>${VIEWS[k].label}</span><span class="n">${viewRows(k).length}</span></button>`).join('');
+}
+function renderCases(){
+  renderViews();
+  const r = viewRows(), shown = r.slice(0, S.listN || LIST_STEP);
+  $('#clist').innerHTML = shown.length ? shown.map(({f, i}) => {
+    const st = caseState(f);
+    return `<li><button class="case${st === 'Dismissed' || redundant(f) ? ' dim' : ''}" data-row="${i}" aria-current="${i === S.sel}">
+      <span class="ch">${tierMark(f.tier)}${f._unc.length ? '<span class="uncm">Uncertain</span>' : ''}</span>
+      <span class="ct">${xmlEsc(CaseLogic.PLAIN[f.type] || f.type)}</span>
+      <span class="cm">${f.id}${f.place ? ` · ${xmlEsc(f.place.name)}` : ''} · ${areaShort(f.area_sqm)}${f.part_of ? ` · part of ${f.part_of}` : ''}${f.dup_of ? ` · same spot as ${f.dup_of}` : ''}</span>
+      <span class="cr">${stMark(st)}</span></button></li>`;
+  }).join('') + (r.length > shown.length ? `<li><button class="case" data-act="more-cases"><span class="ct" style="color:var(--ocean)">Show ${Math.min(LIST_STEP, r.length - shown.length)} more of ${r.length - shown.length}</span></button></li>` : '')
+    : `<li class="empty">${S.q ? 'No case matches this search.' : S.av === 'matters' ? 'Nothing needs a decision right now. Open “All changes” to look through everything detected.' : 'No cases in this view.'}</li>`;
+  $('#tCount').textContent = `${r.length} of ${feats().length}`;
+}
+
+/* ---------- map layers ---------- */
 function renderLegend(){
   const fs = feats(), fa = FA();
   let h = TIERS.map(t => {
@@ -1150,6 +1505,10 @@ function renderLegend(){
   const cr = sc().creep;
   if (cr && cr.features.length) h += `<label class="lg-row${S.hideCreep ? ' off' : ''}"><input type="checkbox" data-layer="creep"${S.hideCreep ? '' : ' checked'}>
       <span class="sw dot" style="--c:var(--clay)"></span>Creep &amp; precursors<span class="n">${cr.features.length}</span></label>`;
+  if (sc().heat) h += `<label class="lg-row${S.heat ? '' : ' off'}"><input type="checkbox" data-layer="heat"${S.heat ? ' checked' : ''}>
+      <span class="sw heat"></span>Changed pixels, selected case</label>`;
+  h += `<label class="lg-row${S.spot ? '' : ' off'}"><input type="checkbox" data-layer="spot"${S.spot ? ' checked' : ''}>
+      <span class="sw" style="--c:var(--ink-2)"></span>Dim around the selected case</label>`;
   const u = sc().unobservable;
   if (u && u.pct > 0) h += `<label class="lg-row${S.hideUnobs ? ' off' : ''}"><input type="checkbox" data-layer="unobs"${S.hideUnobs ? '' : ' checked'}>
       <span class="sw hatch"></span>Unobservable<span class="n">${u.pct.toFixed(1)}%</span></label>`;
@@ -1157,16 +1516,8 @@ function renderLegend(){
   if (ref && ref.polygons && ref.polygons.length) h += `<label class="lg-row${S.hideRef ? ' off' : ''}"><input type="checkbox" data-layer="ref"${S.hideRef ? '' : ' checked'}>
       <span class="sw outline"></span>EMS reference outline<span class="n">${ref.polygons.length}</span></label>`;
   if (S.mode === 'naive') h += `<div class="lg-row fa"><span class="sw" style="--c:var(--fa);margin-left:23px"></span>Naive false alarms<span class="n">${fa.length}</span></div>`;
-  if (S.sev === 'disaster' && !sc().event) h += `<div class="sev-hint">Disaster mode on non-event sector: re-ranks priorities only</div>`;
+  if (S.sev === 'disaster' && !sc().event) h += `<div class="sev-hint">Disaster mode on a non-event area re-ranks priorities only.</div>`;
   $('#legend').innerHTML = h;
-}
-function renderTable(){
-  const r = rows();
-  $('#tbody').innerHTML = r.length ? r.map(({f, i}) =>
-    `<tr data-row="${i}" aria-selected="${i === S.sel}"><td class="mono">${f.id}${stChip(f)}</td><td><span class="dot" style="--c:${TIER_VAR[f.tier]}"></span>${SHORT[f.type] || f.type}</td><td class="num mono">${fmt(f.area_sqm)}</td></tr>`).join('')
-    : `<tr><td colspan="3" class="empty">No detections match these filters.</td></tr>`;
-  $('#tCount').textContent = `${r.length} of ${feats().length}`;
-  $$('th button').forEach(b => b.textContent = b.textContent.replace(/ [↑↓]$/, '') + (b.dataset.sort === S.sort.k ? (S.sort.d < 0 ? ' ↓' : ' ↑') : ''));
 }
 const pts = a => a.map(p => p.join(',')).join(' ');
 function renderUnobs(){
@@ -1174,8 +1525,7 @@ function renderUnobs(){
   $('#unL').innerHTML = u && !S.hideUnobs ? u.polygons.map(p => `<polygon class="unobs" data-un="1" points="${pts(p)}"/>`).join('') : '';
 }
 function renderRef(){
-  const ref = sc().reference;
-  const el = $('#refL');
+  const ref = sc().reference, el = $('#refL');
   if (!el) return;
   el.innerHTML = ref && !S.hideRef ? ref.polygons.map(p => `<polygon class="ref-poly" points="${pts(p)}"/>`).join('') : '';
 }
@@ -1194,11 +1544,17 @@ function renderMap(){
   feats().forEach((f, i) => {
     if (S.hidden.has(f.tier)) return;
     if (i === S.sel) h += `<polygon class="halo" points="${pts(f.pts)}"/>`;
-    h += `<polygon class="poly${f.kind ? ' creep' : ''}${caseState(f) === 'Dismissed' ? ' dismissed' : ''}${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]}" points="${pts(f.pts)}"/>`;
+    h += `<polygon class="poly${f.kind ? ' creep' : ''}${caseState(f) === 'Dismissed' ? ' dismissed' : ''}${i === S.sel ? ' sel' : ''}${f._span >= 25 ? ' wide' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]}" points="${pts(f.pts)}"/>`;
   });
   $('#ftL').innerHTML = h;
   $('#pins').innerHTML = feats().map((f, i) =>
-    `<span class="pin${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]};left:${f.cx}%;top:${f.cy}%;${S.hidden.has(f.tier) ? 'display:none' : ''}"></span>`).join('');
+    `<span class="pin${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]};left:${f.cx}%;top:${f.cy}%;${S.hidden.has(f.tier) || (redundant(f) && i !== S.sel) ? 'display:none' : ''}"></span>`).join('');
+  // #42: the selected case's own changed pixels, and the rest of the tile dimmed
+  // skipped for a case spanning most of the tile (a 366 km² burn): there the highlight would hide the imagery itself
+  const f = feats()[S.sel], on = f && S.mode !== 'naive' && f._span < 25;
+  $('#selClipP').setAttribute('points', on ? pts(f.pts) : '');
+  $('#heatImg').setAttribute('href', on && S.heat && sc().heat ? sc().heat : '');
+  $('#spot').setAttribute('d', on && S.spot ? `M0,0H100V100H0Z M${f.pts.map(p => p.join(',')).join('L')}Z` : '');
   applyView(false);
 }
 // inline SVG sparkline of a per-year series (creep polygons): first / last year labelled
@@ -1209,43 +1565,254 @@ function spark(v, years){
     <polyline points="${xy.map(p => p.join(',')).join(' ')}"/></svg>
     <div class="spark-l"><span>${years[0]} · ${v[0].toFixed(2)}</span><span>${years[n]} · ${v[n].toFixed(2)}</span></div>`;
 }
-function renderInspector(){
-  const f = feats()[S.sel]; if (!f) return;
-  const r = rows(), pos = r.findIndex(x => x.i === S.sel);
-  $('#iId').textContent = f.id;
-  $('#iPos').textContent = pos >= 0 ? `${pos + 1}/${r.length}` : '';
-  $('#iTags').innerHTML = `<span class="tag" style="--c:${TIER_VAR[f.tier]}">${f.tier}</span><span class="tag plain">${f.type}</span>`;
-  $('#iSum').textContent = f.summary;
-  $('#iProps').innerHTML = (f.series ? `<dt>NDBI / year</dt><dd>${spark(f.series, sc().creep.years)}</dd>` : '') + [
-    ['Area', `${fmt(f.area_sqm, 1)} m²`, 1],
-    ['Magnitude', `<span class="bar" style="--c:${TIER_VAR[f.tier]}"><i style="width:${f.magnitude*100}%"></i></span>${f.magnitude.toFixed(3)}`, 1],
-    ['Action', f.priority.replace(/^Priority (\d) - /, 'P$1 · ')],
-    ['Score', `<span title="norm. area × magnitude × type weight (${SEV_MODES[S.sev]}) × exposure">${(f.score/100).toFixed(2)} = ${f.parts.norm_area.toFixed(2)} × ${f.magnitude.toFixed(2)} × ${(D.severity.weights[S.sev][f.type] ?? 0.5).toFixed(2)} × ${f.parts.exposure.toFixed(2)}</span>`, 1],
-    ['Exposure', f.exposure],
-    ['Buffer check', f.violation],
-    ['Centroid', `${fLat(f.lat)}<br>${fLon(f.lon)}`, 1],
-  ].filter(([, v]) => v).map(([k, v, m]) => `<dt>${k}</dt><dd${m ? ' class="mono"' : ''}>${v}</dd>`).join('');
+
+/* ---------- Change-to-Action Card (#43) + verification actions and history (#44) ---------- */
+function actionButton(key, f, st){
+  const a = ACTIONS[key], roleOk = a.roles.includes(PROFILE.role), stateOk = a.from.includes(st);
+  const why = !stateOk ? `Not available while the case is ${st.toLowerCase()}.` : !roleOk ? `For the ${a.roles.join(' or ')}.` : '';
+  return `<button class="abtn ${a.tone || ''}" data-act="act:${key}"${why ? ` disabled title="${why}"` : ''}>${a.label(PROFILE.role)}</button>`;
+}
+function undoable(f){
+  const log = caseLog(f), last = log[log.length - 1];
+  return last && !last.undo_of ? last : null;
+}
+function historyHTML(f){
+  const log = caseLog(f);
+  if (!log.length) return '<li><time>—</time><span>Detected by T.R.A.C.E. No officer decision yet.</span></li>';
+  return log.slice(-6).reverse().map(e => `<li><time datetime="${e.ts}">${localTs(e.ts)}</time><span><b>${xmlEsc(e.actor || e.role)}</b>${e.actor && e.actor !== e.role ? ` (${e.role})` : ''}: ${xmlEsc(e.action)}${e.from !== e.to ? ` → ${e.to}` : ''}${e.assignee ? ` · ${xmlEsc(e.assignee)}` : ''}${e.note ? ` · “${xmlEsc(e.note)}”` : ''}</span>${(e.photos || []).length ? `<span class="ph">${e.photos.map(id => `<img data-photo="${id}" alt="Site photo for ${f.id}">`).join('')}</span>` : ''}</li>`).join('')
+    + (log.length > 6 ? `<li><time></time><span>${log.length - 6} earlier entries in the exported history.</span></li>` : '');
+}
+function renderCard(){
+  const el = $('#cac'), f = feats()[S.sel];
+  if (!f) { el.innerHTML = `<div class="q"><p>No case selected. Pick one from the list or click a polygon on the map.</p></div>`; return; }
+  const F = factsOf(f), C = CaseLogic.card(F), st = F.status, r = viewRows(), pos = r.findIndex(x => x.i === S.sel);
+  const g = sc(), det = g.detector || {}, pp = g.passport;
+  const thr = F.reliability.threshold, frags = f._frags || [];
+  const roster = [...new Set(ROSTER(S.th).concat(rosterExtra))];
+  const extra = ['report', 'resolve', 'reopen'].filter(k => ACTIONS[k].from.includes(st));
+  const navURL = `https://www.google.com/maps/dir/?api=1&destination=${f.lat},${f.lon}`;
+  const idxRows = Object.entries(f.idx || {}).map(([k, v]) => `<dt>Δ${{d_ndvi:'NDVI', d_mndwi:'MNDWI', d_ndbi:'NDBI', d_nbr:'NBR'}[k]}</dt><dd class="mono">${v > 0 ? '+' : ''}${v.toFixed(3)}</dd>`).join('');
+  const passportRows = pp ? [
+      ['Sensor', `${xmlEsc(pp.sensor)} · ${xmlEsc(pp.processing_level)} · ${pp.resolution_m} m`],
+      ...(pp.images || []).map((im, i) => [i ? 'After image' : 'Before image', `${CaseLogic.fmtDate(im.date)}${im.scene_id ? ` · <span class="mono">${xmlEsc(im.scene_id)}</span>` : ''}<br>sun ${im.sun_elevation}° (${xmlEsc(im.sun_source)}) · ${xmlEsc(im.season)}${im.crop_stage ? `, ${xmlEsc(im.crop_stage)}` : ''}`]),
+      ...(pp.comparability ? [['Comparability', `${pp.comparability.score}/100 · ${pp.comparability.factors.filter(x => x.cost > 0).map(x => `${xmlEsc(x.detail)} (−${x.cost})`).join('; ') || 'no factor costs points'}`]] : []),
+      ['Misregistration', pp.misregistration_px != null ? `${pp.misregistration_px} px, corrected` : 'not measured'],
+      ['Source', xmlEsc(pp.source)], ['Licence', xmlEsc(pp.licence)],
+      ...Object.entries(pp.checksums || {}).slice(0, 2).map(([n, h]) => [n, `<span class="mono" title="${h}">sha256 ${h.slice(0, 16)}…</span>`]),
+      ...(pp.note ? [['Note', xmlEsc(pp.note)]] : []),
+    ].map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') : '';
+  el.innerHTML = `
+    <header class="cac-h"><div style="min-width:0">
+        <div class="cac-id">${f.id}${f.kind ? ' · multi-year series' : ''}</div>
+        <h2 class="cac-what">${xmlEsc(C.what)}</h2>
+        <div class="cac-badges">${tierMark(f.tier, ' priority')}${stMark(st)}${C.uncertain.length ? '<span class="uncm">Uncertain</span>' : ''}</div>
+      </div>
+      <div class="stepper"><span>${pos >= 0 ? `${pos + 1} of ${r.length}` : 'not in this view'}</span>
+        <button class="ibtn" data-act="sel:prev" aria-label="Previous case"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+        <button class="ibtn" data-act="sel:next" aria-label="Next case"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div></header>
+    <section class="q"><h3>What changed</h3><ul>
+      <li>${areaText(f.area_sqm)}${f.place ? ` near ${xmlEsc(f.place.name)} (${fmt(f.place.dist_m)} m)` : ''}.</li>
+      <li>${xmlEsc(C.firstSeen)}</li>
+      ${C.persistence ? `<li>${xmlEsc(C.persistence)}</li>` : ''}
+      ${frags.length ? `<li>Includes ${frags.length} small fragment${frags.length === 1 ? '' : 's'} beside it: ${frags.slice(0, 6).join(', ')}${frags.length > 6 ? ` and ${frags.length - 6} more` : ''}.</li>` : ''}
+      ${f.part_of ? `<li>A fragment of ${f.part_of}; decide it with that case.</li>` : ''}
+      ${f.dup_of ? `<li>The same spot as ${f.dup_of}, found again by the multi-year scan.</li>` : ''}
+    </ul><p class="hint2"><button class="lnk" data-act="focus">Zoom to it</button> · <button class="lnk" data-act="copy">Copy coordinates</button></p></section>
+    <section class="q"><h3>Why it matters</h3><p>${xmlEsc(C.whyPriority)}</p><ul>
+      <li>${xmlEsc(C.assets)}</li>${C.buffer ? `<li class="flag">${xmlEsc(C.buffer)}</li>` : ''}</ul></section>
+    <section class="q"><h3>How reliable</h3><dl class="rel">
+      <dt>Signal</dt><dd>${xmlEsc(C.signal)}<div class="meter" style="--c:${F.reliability.margin < 0.15 ? 'var(--unc)' : 'var(--forest)'}" role="img" aria-label="signal ${f.magnitude.toFixed(2)}, threshold ${thr.toFixed(2)}"><i style="width:${f.magnitude * 100}%"></i><b style="left:${thr * 100}%"></b></div></dd>
+      <dt>Images</dt><dd>${xmlEsc(C.comparability)}</dd>
+      <dt>Cloud</dt><dd>${xmlEsc(C.cloud)}</dd>
+      <dt>Season</dt><dd>${xmlEsc(C.seasonal)}</dd>
+    </dl>${C.uncertain.length ? `<div class="callout">Uncertain: ${xmlEsc(C.uncertain.join('; '))}. Look closer before you decide.</div>` : ''}</section>
+    <section class="q next"><h3>What to do next</h3><p>${xmlEsc(C.next)}</p>
+      <div class="acting"><label for="role">Acting as</label><select id="role">${ROLES.map(x => `<option${x === PROFILE.role ? ' selected' : ''}>${x}</option>`).join('')}</select>
+        <input id="actor" type="text" placeholder="Your name (for the history)" value="${xmlEsc(PROFILE.name)}" aria-label="Your name"></div>
+      <div class="acts">${['confirm', 'dismiss', 'inspect', 'assign'].map(k => actionButton(k, f, st)).join('')}
+        ${extra.map(k => `<button class="abtn primary wide" data-act="act:${k}"${ACTIONS[k].roles.includes(PROFILE.role) ? '' : ` disabled title="For the ${ACTIONS[k].roles.join(' or ')}."`}>${ACTIONS[k].label(PROFILE.role)}</button>`).join('')}</div>
+      <div class="assign" id="assignBox"><select id="asSel" aria-label="Assign to">${roster.map(x => `<option>${xmlEsc(x)}</option>`).join('')}<option value="__other">Someone else…</option></select>
+        <button class="abtn primary" data-act="do-assign">Assign</button><input id="asOther" type="text" placeholder="Name or team" aria-label="Assignee name" hidden></div>
+      ${PROFILE.role === 'Field officer' ? `<div class="field"><a class="abtn" href="${navURL}" target="_blank" rel="noopener">Navigate to site</a><button class="abtn" data-act="photo">Add site photo</button></div>` : ''}
+      <input class="note" id="cNote" type="text" placeholder="Why? Add a note to the history (optional)" aria-label="Note for the history" maxlength="280">
+      <p class="hint2">${F.assignee ? `Assigned to ${xmlEsc(F.assignee)}. ` : ''}${ROLES.filter(x => x !== PROFILE.role).length ? `Roles are local to this device and not signed in.` : ''}</p>
+      <ol class="hist" aria-label="Decision history">${historyHTML(f)}</ol>
+      <div class="case-foot"><button class="lnk" data-act="case-undo"${undoable(f) ? '' : ' disabled'}>Undo last action</button><span class="outbox" id="outbox"></span></div>
+    </section>
+    <details class="more" id="more"${S.moreOpen ? ' open' : ''}><summary>Show details</summary><div class="more-b">
+      <h4>Change rules</h4><dl class="kv">${idxRows || '<dt>Indices</dt><dd>not available for RGB imagery</dd>'}<dt>Rule output</dt><dd style="font-weight:500">${xmlEsc(f.summary)}</dd></dl>
+      <h4>Priority score</h4><dl class="kv">
+        <dt>${SEV_MODES[S.sev]} mode</dt><dd class="mono">${(f.score / 100).toFixed(2)} = ${f.parts.norm_area.toFixed(2)} × ${f.magnitude.toFixed(2)} × ${(D.severity.weights[S.sev][f.type] ?? 0.5).toFixed(2)} × ${f.parts.exposure.toFixed(2)}</dd>
+        <dt>Reads as</dt><dd style="font-weight:500">area × signal × type weight × exposure</dd>
+        ${Object.entries(SEV_MODES).map(([m, l]) => `<dt>${l} tier</dt><dd>${f.tiers[m]} · ${(f.scores[m] / 100).toFixed(2)}</dd>`).join('')}
+        <dt>Action</dt><dd>${xmlEsc(f.priority)}</dd></dl>
+      <h4>Detector</h4><dl class="kv">
+        <dt>Model</dt><dd>${xmlEsc(det.name || '')}</dd>
+        <dt>Benchmark</dt><dd>${det.f1 != null ? `F1 ${pct(det.f1)} · ` : ''}${xmlEsc(det.benchmark || '')}</dd>
+        <dt>Threshold</dt><dd class="mono">${thr.toFixed(3)}${det.threshold_base != null && det.threshold !== det.threshold_base ? ` (raised from ${det.threshold_base} for image comparability)` : ''}</dd>
+        <dt>Protected zone</dt><dd>${Math.round((f.zone || 0) * 100)}% inside a protected or water buffer${f.zone >= 0.5 ? ': recall-first threshold' : ''}</dd></dl>
+      ${f.series && sc().creep ? `<h4>Built-up index by year</h4>${spark(f.series, sc().creep.years)}` : ''}
+      ${passportRows ? `<h4>Scene Passport</h4><dl class="kv">${passportRows}</dl>` : ''}
+      <h4>Location</h4><dl class="kv"><dt>Centroid</dt><dd class="mono">${fLat(f.lat)}<br>${fLon(f.lon)}</dd></dl>
+    </div></details>`;
   $('#capId').textContent = f.id;
-  renderVerify();
+  $('#more').addEventListener('toggle', e => { S.moreOpen = e.target.open; });
+  el.querySelectorAll('img[data-photo]').forEach(async im => { const u = await photoURL(im.dataset.photo); if (u) im.src = u; else im.alt = 'Photo not synced to this device yet'; });
+  renderOutbox();
 }
-function renderVerify(){
+function renderOutbox(){
+  const el = $('#outbox'); if (!el) return;
+  const n = Sync.pending().length;
+  el.innerHTML = !n ? (Sync.server ? 'All decisions synced' : '') : Sync.server && navigator.onLine
+    ? `<b>${n}</b> waiting to sync`
+    : `<b>${n}</b> ${navigator.onLine ? 'saved on this device' : 'queued offline'} · <button class="lnk" data-act="dl:pack">Share field pack</button>`;
+}
+
+/* ---------- "Explain this change" (#45) ---------- */
+function renderAsk(){
+  const f = feats()[S.sel];
+  $('#askChips').innerHTML = f ? CaseLogic.QUESTIONS.map(([id, q]) => `<button class="chipq" data-act="ask:${id}">${q.replace('this priority', `${f.tier.toLowerCase()} priority`)}</button>`).join('') : '';
+  const a = $('#answer');
+  if (!S.answer || !f || S.answer.id !== f.id) { a.hidden = true; a.innerHTML = ''; return; }
+  const A = S.answer, li = xs => xs.map(s => `<li>${xmlEsc(s)}</li>`).join('');
+  a.hidden = false;
+  a.innerHTML = `<div class="ans-q">${xmlEsc(A.q)}</div>
+    ${A.facts.length ? `<div class="ans-g"><h4>Observed in the data</h4><ul>${li(A.facts)}</ul></div>` : ''}
+    ${A.hyp.length ? `<div class="ans-g hyp"><h4>Possible explanations, to check on the ground</h4><ul>${li(A.hyp)}</ul></div>` : ''}
+    <div class="ans-src">${xmlEsc(A.src)}</div>`;
+}
+async function ask(q, qid){
   const f = feats()[S.sel]; if (!f) return;
-  const st = caseState(f), log = caseLog(f);
-  // field precision for this sector: confirmed / (confirmed + dismissed), from officer verdicts
-  const states = feats().map(caseState), ok = states.filter(x => VERIFIED.has(x)).length, no = states.filter(x => x === 'Dismissed').length;
-  $('#vBadge').textContent = ok + no ? `field precision ${Math.round(ok / (ok + no) * 100)}% · ${ok}/${ok + no}` : 'no verdicts yet';
-  $('#cState').textContent = `${f.id} · ${st}`;
-  $('#cState').style.setProperty('--c', VERIFIED.has(st) ? 'var(--moss)' : st === 'Dismissed' ? 'var(--crit)' : 'var(--ocean)');
-  $('#role').innerHTML = ROLES.map(r => `<option${r === S.role ? ' selected' : ''}>${r}</option>`).join('');
-  $('#cTrail').innerHTML = log.length ? log.slice(-4).reverse().map(e =>
-    `<li><time>${e.ts.slice(5, 16).replace('T', ' ')}</time><span>${e.role}: ${e.from} → <b>${e.to}</b>${e.note ? ` · ${xmlEsc(e.note)}` : ''}</span></li>`).join('')
-    : '<li class="empty">AI detected · no officer action yet.</li>';
-  const moves = CASE_MOVES.map((m, i) => [m, i]).filter(([m]) => m[0] === st && m[2] === S.role);
-  const others = CASE_MOVES.filter(m => m[0] === st && m[2] !== S.role).map(m => m[2]);
-  $('#cMoves').innerHTML = moves.length
-    ? moves.map(([m, i]) => `<button class="abtn ${m[1] === 'Dismissed' ? 'bad' : 'good'}" data-act="case:${i}">${m[3]}</button>`).join('')
-    : `<p class="hint">${st === 'Resolved' ? 'Case closed.' : `No ${S.role} action at this stage${others.length ? `; next step is for ${[...new Set(others)].join(' / ')}` : ''}.`}</p>`;
+  const F = factsOf(f);
+  const offline = (id, src) => { const r = CaseLogic.answer(id, F); return {id:f.id, q, facts:r.facts, hyp:r.hypotheses, src}; };
+  if (qid) { S.answer = offline(qid, 'Answered from this case’s facts. Every number is checked against them.'); renderAsk(); return; }
+  if (Sync.server) {
+    S.answer = {id:f.id, q, facts:['Checking the case facts…'], hyp:[], src:''}; renderAsk();
+    try {
+      const r = await fetch('api/explain', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question:q, facts:F})});
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+      const j = await r.json();
+      if (j.refused) throw new Error('the model declined this question');
+      const a = CaseLogic.keepGrounded(j.observed_facts, F), b = CaseLogic.keepGrounded(j.possible_explanations, F);
+      const removed = (j.removed || 0) + a.dropped.length + b.dropped.length;
+      S.answer = {id:f.id, q, facts:a.kept.length ? a.kept : ['The answer did not survive the fact check. Try one of the suggested questions.'], hyp:b.kept,
+        src:`Answered by ${j.model} from this case’s facts only.${removed ? ` ${removed} sentence${removed === 1 ? '' : 's'} with numbers not in the facts removed.` : ' Every number checked against the facts.'}`};
+      renderAsk(); return;
+    } catch (e) {
+      const id = CaseLogic.match(q);
+      S.answer = id ? offline(id, `The language model is unavailable (${e.message}); answered offline from the closest suggested question.`)
+        : {id:f.id, q, facts:[`The language model is unavailable (${e.message}).`], hyp:[], src:'Pick a suggested question to get an offline answer.'};
+      renderAsk(); return;
+    }
+  }
+  const id = CaseLogic.match(q);
+  S.answer = id ? offline(id, 'Offline: answered from the closest suggested question, using this case’s facts only.')
+    : {id:f.id, q, facts:['Offline, I can answer the suggested questions above. Free-text questions need the console to be served by the T.R.A.C.E. server with a language model configured.'], hyp:[], src:''};
+  renderAsk();
 }
+
+/* ---------- time travel (#47) ---------- */
+function frameImage(fr){ return fr.img || (fr.role === 'pre' ? sc().images.t1 : sc().images.t2); }
+function showFrame(k){
+  const tl = sc().timeline; if (!tl) return;
+  S.tt = k == null ? null : clamp(k, 0, tl.frames.length - 1);
+  const fr = S.tt == null ? null : tl.frames[S.tt];
+  $('#imgT2').src = fr ? frameImage(fr) : sc().images.t2;
+  $('#d2').textContent = fr ? (tl.kind === 'series' ? CaseLogic.monthYear(fr.date) : CaseLogic.fmtDate(fr.date)) : sc().dates[1];
+  if (S.view === 'before') { S.view = 'swipe'; renderHeader(); setCurtain(S.curtain); }
+  renderTT();
+}
+function ttSpark(t, frames, k){
+  const v = t.values, ok = v.map((x, i) => [x, i]).filter(([x]) => x != null);
+  if (ok.length < 2) return '';
+  const lo = Math.min(...ok.map(([x]) => x)), hi = Math.max(...ok.map(([x]) => x)), span = hi - lo || 1, n = frames.length - 1;
+  const X = i => i / n * 100, Y = x => 40 - (x - lo) / span * 32;
+  const line = ok.map(([x, i]) => `${X(i)},${Y(x)}`).join(' ');
+  const pair = t.pair_frames || [0, 1];
+  const fs = t.first_seen;
+  return `<svg class="tt-spark" viewBox="0 -2 100 48" preserveAspectRatio="none" role="img" aria-label="${xmlEsc((t.index || '').toUpperCase())} for the selected case across the image dates">
+    ${pair.map(i => `<line x1="${X(i)}" x2="${X(i)}" y1="0" y2="44" stroke="var(--ocean)" stroke-width="1" stroke-dasharray="2 2" vector-effect="non-scaling-stroke"/>`).join('')}
+    ${k != null ? `<line x1="${X(k)}" x2="${X(k)}" y1="-2" y2="46" stroke="var(--forest)" stroke-width="2" vector-effect="non-scaling-stroke"/>` : ''}
+    <polyline points="${line}" fill="none" stroke="var(--clay)" stroke-width="1.8" vector-effect="non-scaling-stroke"/>
+    ${ok.map(([x, i]) => `<circle cx="${X(i)}" cy="${Y(x)}" r="${i === fs ? 1.9 : 1.1}" fill="${i === fs ? 'var(--clay)' : 'var(--card)'}" stroke="var(--clay)" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')}
+  </svg>`;
+}
+function renderTT(){
+  const el = $('#tt'), tl = sc().timeline;
+  if (!tl || S.mode === 'naive') { el.hidden = true; return; }
+  el.hidden = false;
+  const fr = tl.frames, k = S.tt, f = feats()[S.sel], t = f && f.temporal && f.temporal.values ? f.temporal : null;
+  const pair = new Set(tl.pair_frames), first = t && t.first_seen != null ? t.first_seen : null;
+  const lbl = (x, i) => tl.kind === 'series' ? x.label : (x.role === 'pre' ? 'Before' : x.role === 'post' ? 'After' : CaseLogic.monthYear(x.date));
+  const showing = k == null ? `the after image, ${sc().dates[1]}` : `${tl.kind === 'series' ? CaseLogic.monthYear(fr[k].date) : CaseLogic.fmtDate(fr[k].date)}`;
+  let note = '';
+  if (f && t && f.temporal.assessed) {
+    const F = factsOf(f), C = CaseLogic.card(F);
+    note = `${f.id} · ${xmlEsc(F.temporal ? F.temporal.index : '')}: ${xmlEsc(tl.kind === 'series' ? C.firstSeen : '')} ${xmlEsc(C.persistence || '')}`;
+  } else if (f) note = `${f.id}: no index history for this case.`;
+  el.innerHTML = `<div class="tt-h"><h3>Time travel</h3><span class="sub2">Right of the divider: <b>${showing}</b> · left: ${sc().dates[0]}</span>
+      <button class="abtn" data-act="tt-play">${S.ttPlay ? 'Pause' : 'Play'}</button></div>
+    <div class="tt-ticks" role="group" aria-label="Image dates">${fr.map((x, i) => x.usable ? `<button class="tick${pair.has(i) ? ' pair' : ''}${i === first ? ' first' : ''}" data-act="tt:${i}" aria-pressed="${i === k}" title="${x.id || ''}">${lbl(x, i)}<small>${tl.kind === 'series' ? CaseLogic.monthYear(x.date).slice(0, 3) : x.date.slice(2)}</small></button>` : '').join('')}</div>
+    ${t ? ttSpark(t, fr, k) : ''}
+    <p class="tt-note">${note}</p>
+    <div class="tt-leg"><span><i style="--c:var(--ocean)"></i>the image pair</span>${tl.kind === 'series' ? '<span><i style="--c:var(--clay)"></i>first visible</span>' : ''}<span>Only dates with a usable, cloud-free image are listed.</span></div>`;
+}
+let ttTimer = null;
+function ttPlay(){
+  const tl = sc().timeline; if (!tl) return;
+  if (S.ttPlay) { clearInterval(ttTimer); S.ttPlay = false; renderTT(); return; }
+  const use = tl.frames.map((x, i) => x.usable ? i : -1).filter(i => i >= 0);
+  let p = S.tt == null ? 0 : Math.max(0, use.indexOf(S.tt) + 1);
+  if (p >= use.length) p = 0;
+  S.ttPlay = true; showFrame(use[p]);
+  ttTimer = setInterval(() => { p++; if (p >= use.length) { clearInterval(ttTimer); S.ttPlay = false; renderTT(); return; } showFrame(use[p]); }, REDUCED ? 1800 : 1100);
+}
+
+/* ---------- Team progress (#48): counts and ageing from the decision history; process measures only ---------- */
+const featIndex = () => { const m = new Map(); KEYS.forEach(th => D.scenes[th].features.concat(D.scenes[th].creep ? D.scenes[th].creep.features : []).forEach(f => m.set(`${th}/${f.id}`, f))); return m; };
+function impactData(period){
+  const since = period === 'all' ? '' : new Date(Date.now() - (+period) * 864e5).toISOString();
+  const ev = audit.filter(e => e.ts >= since && !e.undo_of);
+  const undone = new Set(audit.filter(e => e.undo_of).map(e => e.undo_of));
+  const real = ev.filter(e => !undone.has(e.uid));
+  const idx = featIndex(), cases = new Map();
+  audit.forEach(e => { const k = `${e.sector}/${e.case}`; if (!cases.has(k)) cases.set(k, []); cases.get(k).push(e); });
+  const now = Date.now(), rows = [];
+  cases.forEach((log, k) => {
+    const [th, id] = k.split('/'), f = idx.get(k), last = log[log.length - 1], a = log.filter(e => 'assignee' in e).pop();
+    rows.push({th, id, zone:f && f.place ? f.place.name : '—', team:a && a.assignee ? a.assignee : 'Unassigned', state:last.to,
+      days:Math.floor((now - Date.parse(log[0].ts)) / 864e5), first:log[0].ts, last:last.ts, n:log.length});
+  });
+  return {
+    reviewed:new Set(real.map(e => `${e.sector}/${e.case}`)).size,
+    dismissed:real.filter(e => e.to === 'Dismissed' && e.from !== 'Dismissed').length,
+    inspected:real.filter(e => e.from === 'Field verification' && (e.to === 'Confirmed' || e.to === 'Dismissed')).length,
+    resolved:real.filter(e => e.to === 'Resolved' && e.from !== 'Resolved').length,
+    days:period === 'all' ? 30 : +period, events:real, rows,
+  };
+}
+function renderImpact(period){
+  S.impP = period;
+  $$('[data-act^="imp:"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.act === `imp:${period}`));
+  const d = impactData(period);
+  $('#impFigs').innerHTML = [[d.reviewed, 'cases reviewed'], [d.dismissed, 'false alarms dismissed'], [d.inspected, 'field inspections completed'], [d.resolved, 'cases resolved']]
+    .map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join('');
+  const day = 864e5, today = Math.floor(Date.now() / day), counts = Array(d.days).fill(0);
+  d.events.forEach(e => { const k = d.days - 1 - (today - Math.floor(Date.parse(e.ts) / day)); if (k >= 0 && k < d.days) counts[k]++; });
+  const mx = Math.max(1, ...counts), w = 100 / d.days;
+  $('#impTrend').innerHTML = `<svg class="imp-trend" viewBox="0 0 100 40" preserveAspectRatio="none" role="img" aria-label="Decisions per day, last ${d.days} days">${counts.map((c, i) => `<rect x="${i * w + w * .15}" y="${40 - c / mx * 38}" width="${w * .7}" height="${c / mx * 38}"/>`).join('')}</svg>
+    <p class="fine" style="margin:2px 0 0">Decisions per day, last ${d.days} days. Busiest day: ${Math.max(...counts)}.</p>`;
+  const open = d.rows.filter(r => !['Dismissed', 'Resolved'].includes(r.state)).sort((a, b) => b.days - a.days);
+  $('#impOld').innerHTML = open.length ? open.slice(0, 8).map(r => `<tr><td class="mono">${r.id}</td><td>${xmlEsc(city(r.th))} · ${xmlEsc(r.zone)}</td><td>${xmlEsc(r.team)}</td><td>${stMark(r.state)}</td><td class="num mono">${r.days}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="empty">No open cases with officer activity yet.</td></tr>';
+  const med = a => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor((s.length - 1) / 2)] : '–'; };
+  const group = key => { const m = new Map(); d.rows.forEach(r => { const g = m.get(r[key]) || {open:[], closed:0}; ['Dismissed', 'Resolved'].includes(r.state) ? g.closed++ : g.open.push(r.days); m.set(r[key], g); }); return [...m]; };
+  const by = group('zone').map(([k, g]) => [`Zone: ${k}`, g]).concat(group('team').map(([k, g]) => [`Team: ${k}`, g]));
+  $('#impBy').innerHTML = by.length ? by.map(([k, g]) => `<tr><td>${xmlEsc(k)}</td><td class="num mono">${g.open.length}</td><td class="num mono">${g.closed}</td><td class="num mono">${med(g.open)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="empty">Decisions recorded on any case appear here.</td></tr>';
+}
+
 function renderAdvisory(){
   const a = ADV[S.lang], f = feats()[S.sel];
   $('#advTitle').textContent = a.title;
@@ -1272,13 +1839,13 @@ function renderLookup(){
   $('#lkBtn').textContent = l.btn;
   const pin = ps.find(p => p.kind === 'pincode'), area = ps.find(p => p.kind === 'suburb') || ps[0];
   $('#lkIn').placeholder = ps.length ? l.ph + [pin && pin.name, area && placeName(area)].filter(Boolean).join(' / ') : '';
-  $('#lkList').innerHTML = ps.map(p => `<option value="${placeName(p)}">`).join('');
+  $('#lkList').innerHTML = ps.map(p => `<option value="${xmlEsc(placeName(p))}">`).join('');
   if (!ps.length) { out.hidden = false; out.style.removeProperty('--c'); out.textContent = l.off; return; }
   if (!S.lk) { out.hidden = true; return; }
   out.hidden = false;
   const pl = S.lk.place;
   if (!pl) { out.style.removeProperty('--c'); out.textContent = l.none(S.lk.q); return; }
-  // citizens see officer-verified cases only (Ideation Baseline: unverified alerts must not reach the public)
+  // citizens see officer-verified cases only (unverified alerts must not reach the public)
   const all = feats(), near = f => haversine(pl.lat, pl.lon, f.lat, f.lon);
   const pending = all.filter(f => !VERIFIED.has(caseState(f)) && caseState(f) !== 'Dismissed' && near(f) <= NEAR_M).length;
   const vis = all.map((f, i) => [f, i, near(f)]).filter(([f]) => VERIFIED.has(caseState(f))).sort((a, b) => a[2] - b[2]);
@@ -1291,26 +1858,41 @@ function renderLookup(){
     : l.far(placeName(pl), d)) + (pending ? l.pending(pending) : '');
   if (m <= NEAR_M) S.lk.nearest = i;
 }
-function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderUnobs(); renderRef(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderLookup(); renderBanner(); }
+function renderAll(){ renderHeader(); renderMission(); renderCases(); renderLegend(); renderUnobs(); renderRef(); renderNaive(); renderMap(); renderCard(); renderAsk(); renderTT(); renderAdvisory(); renderLookup(); renderBanner(); renderOverview(); }
+function renderDecision(){ renderMission(); renderCases(); renderMap(); renderCard(); renderLookup(); renderOverview(); }
 
 function select(i, flyTo){
-  S.sel = i; renderMap(); renderInspector(); renderAdvisory();
-  $$('#tbody tr').forEach(tr => tr.setAttribute('aria-selected', +tr.dataset.row === i));
-  $(`#tbody tr[data-row="${i}"]`)?.scrollIntoView({block:'nearest'});
+  if (i == null || !feats()[i]) return;
+  const changed = i !== S.sel;
+  S.sel = i; renderMap(); renderCard(); renderAdvisory(); renderTT();
+  if (changed) { S.answer = null; renderAsk(); } else renderAsk();
+  $$('#clist .case[data-row]').forEach(b => b.setAttribute('aria-current', +b.dataset.row === i));
+  $(`#clist .case[data-row="${i}"]`)?.scrollIntoView({block:'nearest'});
   if (flyTo) flyToFeature(i);
 }
 function step(d){
-  const r = rows(); if (!r.length) return;
+  const r = viewRows(); if (!r.length) return;
   const pos = r.findIndex(x => x.i === S.sel);
   select(r[(pos + d + r.length) % r.length].i, true);
+}
+function setView(v, pick){
+  S.av = v; S.listN = LIST_STEP; renderMission(); renderCases(); renderCard();
+  const r = viewRows();
+  if (pick && r.length) select(r[0].i, true);
 }
 
 async function loadTheater(th){
   S.th = th; S.sev = sc().default_mode || 'encroachment'; applySev(); S.hidden.clear(); S.hideRef = false; S.q = ''; $('#search').value = ''; S.lk = null; $('#lkIn').value = '';
-  const fs = feats();
-  fs.forEach(f => { const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
-    f._span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); });
-  S.sel = fs.map((f, i) => i).sort((a, b) => tierRank(fs[b].tier) - tierRank(fs[a].tier) || fs[b].area_sqm - fs[a].area_sqm)[0];
+  S.tt = null; S.answer = null; S.av = 'matters'; S.listN = LIST_STEP; clearInterval(ttTimer); S.ttPlay = false; $('#layPop').hidden = true;
+  const every = sc().features.concat(sc().creep ? sc().creep.features : []), byId = new Map(every.map(f => [f.id, f]));
+  every.forEach(f => {
+    const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
+    f._span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+    f._unc = CaseLogic.uncertain(CaseLogic.facts(f, sc())); f._frags = [];
+  });
+  every.forEach(f => { if (f.part_of && byId.has(f.part_of)) byId.get(f.part_of)._frags.push(f.id); });
+  const first = viewRows('matters')[0] || viewRows('all')[0];
+  S.sel = first ? first.i : 0;
   const t1 = $('#imgT1'), t2 = $('#imgT2');
   t1.src = sc().images.t1; t2.src = sc().images.t2;
   await Promise.all([t1.decode().catch(() => {}), t2.decode().catch(() => {})]);
@@ -1332,10 +1914,10 @@ function download(data, name, mime){
 const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
 const xmlEsc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 function capNote(f){
-  const st = caseState(f), last = caseLog(f).filter(e => VERIFIED.has(e.to))[0];
+  const st = caseState(f), last = caseLog(f).filter(e => VERIFIED.has(e.to)).pop();
   return VERIFIED.has(st)
-    ? `Field-confirmed by ${last.role} on ${last.ts.slice(0, 10)}${last.note ? ` (${last.note})` : ''}; case state ${st}. Draft awaiting DDMA sign-off.`
-    : `Draft alert generated by T.R.A.C.E. AI. Not yet field-verified (case state: ${st}). Awaiting official verification and sign-off by the District Disaster Management Authority (DDMA).`;
+    ? `Confirmed by ${last.actor || last.role} (${last.role}, ${last.role === 'Field officer' ? 'site visit' : 'imagery review'}) on ${localDay(last.ts)}${last.note ? ` (${last.note})` : ''}; case state ${st}. Draft awaiting DDMA sign-off.`
+    : `Draft alert generated by T.R.A.C.E. AI. Not yet verified by an officer (case state: ${st}). Awaiting official verification and sign-off by the District Disaster Management Authority (DDMA).`;
 }
 function capXml(f){
   const crit = f.tier === 'Critical', la = f.lat, lo = f.lon;
@@ -1379,41 +1961,103 @@ function capXml(f){
 `;
 }
 function csv(){
-  const q = v => `"${String(v).replace(/"/g, '""')}"`;
-  const head = ['feature_id','severity_tier','change_type','area_sqm','magnitude','centroid_lat','centroid_lon','action_priority','case_state'];
-  return [head.join(',')].concat(rows().map(({f}) => {
-    return [f.id, f.tier, q(f.type), f.area_sqm, f.magnitude, f.lat.toFixed(6), f.lon.toFixed(6), q(f.priority), q(caseState(f))].join(',');
-  })).join('\n');
+  const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const head = ['feature_id','priority','change','change_type','area_sqm','first_seen','uncertain','near','centroid_lat','centroid_lon','status','assignee','action_priority'];
+  return [head.join(',')].concat(viewRows().map(({f}) => [f.id, f.tier, q(CaseLogic.PLAIN[f.type] || f.type), q(f.type), f.area_sqm,
+    firstSeenDate(f) !== (sc().iso_dates || [])[1] ? firstSeenDate(f) : '', q(f._unc.join('; ')), q(f.place ? f.place.name : ''),
+    f.lat.toFixed(6), f.lon.toFixed(6), q(caseState(f)), q(assigneeOf(f)), q(f.priority)].join(','))).join('\n');
+}
+async function fieldPack(){
+  const ids = new Set(audit.flatMap(e => e.photos || []));
+  const photos = (await PhotoDB.all().catch(() => [])).filter(p => ids.has(p.id));
+  return JSON.stringify({format:'trace-field-pack', version:1, exported:new Date().toISOString(), by:`${actorName()} (${PROFILE.role})`, entries:audit, photos});
+}
+function impactCSV(){
+  const d = impactData(S.impP || 30), q = v => `"${String(v).replace(/"/g, '""')}"`;
+  return ['area,case,zone,team,status,first_action,last_action,days_open,decisions'].concat(d.rows.map(r =>
+    [q(city(r.th)), r.id, q(r.zone), q(r.team), q(r.state), r.first, r.last, ['Dismissed', 'Resolved'].includes(r.state) ? '' : r.days, r.n].join(','))).join('\n');
 }
 const DL = {
   geojson: () => download(D.files[S.th].geojson, `${S.th}_change_intelligence.geojson`, 'application/geo+json'),
   gpkg: () => download(bytes(D.files[S.th].gpkg), `${S.th}_change_intelligence.gpkg`, 'application/geopackage+sqlite3'),
   cap: () => { const f = feats()[S.sel];
-    if (caseState(f) === 'Dismissed') return toast(`${f.id} was dismissed as a false alarm: no alert drafted`);
+    if (caseState(f) === 'Dismissed') return toast(`${f.id} was marked as a false alarm: no alert drafted`);
     download(capXml(f), `sachet_cap_${S.th}_${f.id}.xml`, 'application/xml'); },
-  audit: () => download(JSON.stringify(audit, null, 1), 'trace_audit_log.json', 'application/json'),
+  audit: () => download(JSON.stringify(audit, null, 1), 'trace_decision_history.json', 'application/json'),
   verdicts: () => download(JSON.stringify(KEYS.flatMap(th => D.scenes[th].features.concat(D.scenes[th].creep ? D.scenes[th].creep.features : [])
       .map(f => [f, caseLog(f, th)]).filter(([, l]) => l.length && (VERIFIED.has(l[l.length - 1].to) || l[l.length - 1].to === 'Dismissed'))
       .map(([f, l]) => ({sector: th, id: f.id, verdict: l[l.length - 1].to === 'Dismissed' ? 'false_alarm' : 'confirmed',
-        state: l[l.length - 1].to, decided_at: l[l.length - 1].ts, change_type: f.type, area_sqm: f.area_sqm, ring_latlon: f.ring}))), null, 1),
+        state: l[l.length - 1].to, decided_at: l[l.length - 1].ts, decided_by: l[l.length - 1].actor || l[l.length - 1].role,
+        change_type: f.type, area_sqm: f.area_sqm, ring_latlon: f.ring}))), null, 1),
     'trace_officer_verdicts.json', 'application/json'),
   sitrep: () => download(bytes(D.files[S.th].sitrep), `TRACE_SitRep_${S.th}.pdf`, 'application/pdf'),
-  csv: () => download(csv(), `${S.th}_detections.csv`, 'text/csv'),
+  csv: () => download(csv(), `${S.th}_${S.av}_cases.csv`, 'text/csv'),
+  pack: async () => download(await fieldPack(), `trace_field_pack_${new Date().toISOString().slice(0, 10)}.json`, 'application/json'),
+  impact: () => download(impactCSV(), 'trace_team_progress.csv', 'text/csv'),
 };
 
 /* ============================================================
    ACTIONS (delegated)
    ============================================================ */
+function decide(key){
+  const f = feats()[S.sel], a = ACTIONS[key], st = caseState(f);
+  if (!a || !a.from.includes(st) || !a.roles.includes(PROFILE.role)) return;
+  if (key === 'assign') { const box = $('#assignBox'); box.classList.toggle('on'); box.querySelector('select').focus(); return; }
+  const note = $('#cNote').value.trim();
+  record(f, {action:a.label(PROFILE.role), to:a.to, note, method:PROFILE.role === 'Field officer' ? 'site visit' : 'imagery review'});
+  renderDecision();
+  toast(`${f.id} ${a.done}`);
+}
+function doAssign(){
+  const f = feats()[S.sel], sel = $('#asSel'), other = $('#asOther');
+  if (sel.value === '__other' && other.hidden) { other.hidden = false; other.focus(); return; }
+  const who = (sel.value === '__other' ? other.value : sel.value).trim();
+  if (!who) { other.focus(); toast('Type a name or team to assign the case to'); return; }
+  if (sel.value === '__other' && !ROSTER(S.th).includes(who)) { rosterExtra = [...new Set(rosterExtra.concat(who))]; store.set('ci-roster', rosterExtra); }
+  const st = caseState(f);
+  record(f, {action:'Assign case', to:st === 'New' ? 'Under review' : st, assignee:who, note:$('#cNote').value.trim()});
+  renderDecision(); renderViews();
+  toast(`${f.id} assigned to ${who}`);
+}
+function undo(){
+  const f = feats()[S.sel], last = undoable(f);
+  if (!last) { toast('Nothing to undo on this case'); return; }
+  const before = caseLog(f).filter(e => e !== last && 'assignee' in e).pop();
+  record(f, {action:`Undo: ${last.action}`, from:last.to, to:last.from, undo_of:last.uid, ...('assignee' in last ? {assignee:before ? before.assignee : null} : {})});
+  renderDecision();
+  toast(`Undid “${last.action}” on ${f.id}`);
+}
+async function addPhoto(file){
+  const f = feats()[S.sel]; if (!f || !file) return;
+  try {
+    const data = await downsize(file), id = newId();
+    await PhotoDB.put({id, sector:S.th, case:f.id, ts:new Date().toISOString(), data});
+    photoCache.set(id, data);
+    record(f, {action:'Site photo added', photos:[id], note:$('#cNote').value.trim()});
+    renderCard(); toast(`Photo saved to ${f.id}${Sync.server && navigator.onLine ? '' : ': it will sync when you are back online'}`);
+  } catch (e) { toast('That file could not be read as a photo'); }
+}
+async function importPack(file){
+  try {
+    const j = JSON.parse(await file.text());
+    if (j.format !== 'trace-field-pack' || !Array.isArray(j.entries)) throw new Error('not a field pack');
+    const n = Sync.merge(j.entries);
+    let m = 0;
+    for (const p of (j.photos || [])) if (p && p.id && typeof p.data === 'string' && p.data.startsWith('data:image/')) { await PhotoDB.put(p).catch(() => {}); m++; }
+    renderDecision();
+    toast(n || m ? `Imported ${n} decision${n === 1 ? '' : 's'} and ${m} photo${m === 1 ? '' : 's'} from ${j.by || 'a field pack'}` : 'Nothing new in that field pack');
+  } catch (e) { toast(`Could not import: ${e.message}`); }
+}
 document.addEventListener('click', e => {
-  const el = e.target.closest('[data-act]'); if (!el) return;
-  if (el.tagName !== 'INPUT') e.preventDefault();
+  const el = e.target.closest('[data-act]'); if (!el || el.disabled) return;
+  if (el.tagName !== 'INPUT' && el.tagName !== 'A') e.preventDefault();
   const [k, v] = el.dataset.act.split(':');
   switch (k) {
     case 'fly': fly(v in D.scenes ? v : KEYS[0], 1); break;
-    case 'back': if (S.stage === 'dash') fly(S.th, -1); break;
-    case 'th': if (v !== S.th) { loadTheater(v).then(() => toast(`Loaded ${D.scenes[v].label}`)); } break;
-    case 'mode': S.mode = v; renderHeader(); renderKpis(); renderLegend(); renderNaive(); break;
-    case 'sev': S.sev = v; applySev(); renderAll(); toast(v === 'disaster' && !sc().event ? 'Disaster mode: re-ranks existing detections (non-event sector)' : `${SEV_MODES[v]} priorities: tiers re-ranked`); break;
+    case 'back': if (S.stage === 'dash') { showOverview(false); fly(S.th, -1); } break;
+    case 'th': if (v !== S.th) { loadTheater(v).then(() => { showOverview(true); }); } break;
+    case 'mode': S.mode = v; renderHeader(); renderMission(); renderLegend(); renderNaive(); renderMap(); renderTT(); break;
+    case 'sev': S.sev = v; applySev(); renderAll(); toast(v === 'disaster' && !sc().event ? 'Disaster mode re-ranks the existing changes (not an event area)' : `Ranked for ${SEV_MODES[v].toLowerCase()} work`); break;
     case 'lang': S.lang = v; renderHeader(); renderAdvisory(); renderLookup(); break;
     case 'view': S.view = v; renderHeader(); setCurtain(S.curtain); break;
     case 'zoom': { const r = map.getBoundingClientRect();
@@ -1424,42 +2068,61 @@ document.addEventListener('click', e => {
       const f = feats()[S.sel], txt = `${f.lat.toFixed(6)}, ${f.lon.toFixed(6)}`;
       (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast(`Copied ${txt}`), () => toast(txt));
       break; }
-    case 'case': {
-      const f = feats()[S.sel], [from, to] = CASE_MOVES[+v];
-      if (caseState(f) !== from) break;
-      audit.push({ts: new Date().toISOString(), sector: S.th, case: f.id, from, to, role: S.role, note: $('#cNote').value.trim()});
-      saveAudit(); $('#cNote').value = '';
-      renderVerify(); renderTable(); renderMap(); renderLookup();
-      toast(`${f.id}: ${from} → ${to}`);
-      break; }
-    case 'case-undo': {
-      const e = audit.pop(); if (!e) { toast('Nothing to undo'); break; }
-      saveAudit(); renderVerify(); renderTable(); renderMap(); renderLookup();
-      toast(`Undid ${e.case}: ${e.from} → ${e.to}`);
-      break; }
+    case 'av': setView(v, true); break;
+    case 'ov': showOverview(false); if (v !== 'close') setView(v, true); break;
+    case 'overview': showOverview($('#overview').hidden); break;
+    case 'more-cases': S.listN = (S.listN || LIST_STEP) + LIST_STEP; renderCases(); break;
+    case 'unobs-toggle': S.hideUnobs = !S.hideUnobs; renderLegend(); renderUnobs(); toast(S.hideUnobs ? 'Unobservable areas hidden' : 'Unobservable areas shown hatched on the map'); break;
+    case 'layers': { const p = $('#layPop'); p.hidden = !p.hidden; el.setAttribute('aria-expanded', !p.hidden); break; }
+    case 'act': decide(v); break;
+    case 'do-assign': doAssign(); break;
+    case 'case-undo': undo(); break;
+    case 'photo': $('#photoIn').click(); break;
+    case 'pack-import': $('#packIn').click(); break;
+    case 'ask': ask(CaseLogic.QUESTIONS.find(x => x[0] === v)[1].replace('this priority', `${feats()[S.sel].tier.toLowerCase()} priority`), v); break;
+    case 'tt': showFrame(+v); break;
+    case 'tt-play': ttPlay(); break;
+    case 'impact': renderImpact(S.impP || 30); $('#impact').showModal(); break;
+    case 'impact-close': $('#impact').close(); break;
+    case 'imp': renderImpact(v === 'all' ? 'all' : +v); break;
     case 'dl': DL[v](); break;
     case 'bench': $('#bench').showModal(); break;
     case 'bench-close': $('#bench').close(); break;
     case 'stress': renderStress(v); break;
   }
 });
-$('#tbody').addEventListener('click', e => { const tr = e.target.closest('[data-row]'); if (tr) select(+tr.dataset.row, true); });
-$('#tbody').addEventListener('pointerover', e => {
-  const tr = e.target.closest('[data-row]');
+$('#clist').addEventListener('click', e => {
+  const b = e.target.closest('[data-row]'); if (!b) return;
+  select(+b.dataset.row, true);
+  if (innerWidth <= 820) map.scrollIntoView({behavior:REDUCED ? 'auto' : 'smooth', block:'start'});   // phones: the list sits below the map
+});
+$('#clist').addEventListener('pointerover', e => {
+  const b = e.target.closest('[data-row]');
   $$('.poly.hl').forEach(p => p.classList.remove('hl'));
-  if (tr) $(`.poly[data-i="${tr.dataset.row}"]`)?.classList.add('hl');
+  if (b) $(`.poly[data-i="${b.dataset.row}"]`)?.classList.add('hl');
 });
 $('#legend').addEventListener('change', e => {
-  if (e.target.dataset.layer === 'ref') { S.hideRef = !e.target.checked; renderLegend(); renderRef(); return; }
-  if (e.target.dataset.layer === 'unobs') { S.hideUnobs = !e.target.checked; renderLegend(); renderUnobs(); return; }
-  if (e.target.dataset.layer === 'creep') { S.hideCreep = !e.target.checked; S.sel = Math.min(S.sel, feats().length - 1); renderAll(); return; }
+  const L = e.target.dataset.layer;
+  if (L === 'ref') { S.hideRef = !e.target.checked; renderLegend(); renderRef(); return; }
+  if (L === 'unobs') { S.hideUnobs = !e.target.checked; renderLegend(); renderUnobs(); return; }
+  if (L === 'heat') { S.heat = e.target.checked; renderLegend(); renderMap(); return; }
+  if (L === 'spot') { S.spot = e.target.checked; renderLegend(); renderMap(); return; }
+  if (L === 'creep') { S.hideCreep = !e.target.checked; S.sel = Math.min(S.sel, feats().length - 1); renderAll(); return; }
   const t = e.target.dataset.tier; if (!t) return;
   e.target.checked ? S.hidden.delete(t) : S.hidden.add(t);
-  renderLegend(); renderTable(); renderMap(); renderInspector();
+  renderLegend(); renderMap();
 });
-$$('th button').forEach(b => b.addEventListener('click', () => {
-  const k = b.dataset.sort; S.sort = {k, d:S.sort.k === k ? -S.sort.d : (k === 'id' ? 1 : -1)}; renderTable(); renderInspector();
-}));
+// role and name live in the card, which re-renders: delegate
+document.addEventListener('change', e => {
+  if (e.target.id === 'role') { PROFILE.role = e.target.value; store.set('ci-profile', PROFILE); renderCard(); renderViews(); toast(`Acting as ${PROFILE.role}`); }
+  if (e.target.id === 'actor') { PROFILE.name = e.target.value.trim().slice(0, 60); store.set('ci-profile', PROFILE); renderViews(); }
+  if (e.target.id === 'asSel') { $('#asOther').hidden = e.target.value !== '__other'; if (e.target.value === '__other') $('#asOther').focus(); }
+  if (e.target.id === 'ovArea' && e.target.value !== S.th) loadTheater(e.target.value).then(() => showOverview(true));
+});
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'asOther') { e.preventDefault(); doAssign(); } });
+$('#photoIn').addEventListener('change', e => { addPhoto(e.target.files[0]); e.target.value = ''; });
+$('#packIn').addEventListener('change', e => { if (e.target.files[0]) importPack(e.target.files[0]); e.target.value = ''; });
+$('#askForm').addEventListener('submit', e => { e.preventDefault(); const q = $('#askIn').value.trim(); if (q) ask(q); });
 $('#lookup').addEventListener('submit', e => {
   e.preventDefault();
   const q = $('#lkIn').value.trim(); if (!q) return;
@@ -1467,22 +2130,32 @@ $('#lookup').addEventListener('submit', e => {
   renderLookup();
   if (S.lk.place && S.lk.nearest !== undefined) select(S.lk.nearest, true);
 });
-$('#role').addEventListener('change', e => { S.role = e.target.value; try { localStorage.setItem('ci-role', S.role); } catch (err) {} renderVerify(); });
-$('#stateF').innerHTML = [['all','All states'],['open','Open cases'], ...CASE_STATES.map(x => [x, x])].map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
-$('#stateF').addEventListener('change', e => { S.stF = e.target.value; renderTable(); renderInspector(); });
-$('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); renderTable(); renderInspector(); });
+$('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); S.listN = LIST_STEP; renderCases(); renderCard(); });
 $('#fill').addEventListener('input', e => $('#vec').style.setProperty('--fill', e.target.value/100));
-$('#bench').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+['#bench', '#impact'].forEach(id => $(id).addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); }));
+document.addEventListener('click', e => {   // close the layers popover from outside
+  const p = $('#layPop');
+  if (!p.hidden && !p.contains(e.target) && !e.target.closest('[data-act="layers"]')) { p.hidden = true; $('[data-act="layers"]').setAttribute('aria-expanded', 'false'); }
+});
 addEventListener('keydown', e => {
-  if (S.stage !== 'dash' || flying || e.target.closest('input, dialog[open]') || e.metaKey || e.ctrlKey) return;
-  const r = map.getBoundingClientRect();
+  if (S.stage !== 'dash' || flying || e.metaKey || e.ctrlKey) return;
+  if (e.key === 'Escape') {
+    if (!$('#overview').hidden) { showOverview(false); return; }
+    if (!$('#layPop').hidden) { $('#layPop').hidden = true; return; }
+  }
+  if (e.target.closest('input, select, textarea, dialog[open]')) return;
+  const r = map.getBoundingClientRect(), tl = sc().timeline;
+  const ttStep = d => { if (!tl) return; const use = tl.frames.map((x, i) => x.usable ? i : -1).filter(i => i >= 0);
+    const p = S.tt == null ? use.indexOf(tl.pair_frames[1]) : use.indexOf(S.tt); showFrame(use[clamp(p + d, 0, use.length - 1)]); };
   const act = {ArrowRight:() => step(1), ArrowLeft:() => step(-1), j:() => step(1), k:() => step(-1),
     f:() => fitView(true), '+':() => zoomAt(1.6, r.width/2, r.height/2, true), '=':() => zoomAt(1.6, r.width/2, r.height/2, true),
     '-':() => zoomAt(1/1.6, r.width/2, r.height/2, true), '1':() => $('[data-act="view:before"]').click(),
-    '2':() => $('[data-act="view:swipe"]').click(), '3':() => $('[data-act="view:after"]').click()}[e.key];
+    '2':() => $('[data-act="view:swipe"]').click(), '3':() => $('[data-act="view:after"]').click(),
+    '[':() => ttStep(-1), ']':() => ttStep(1)}[e.key];
   if (act) { e.preventDefault(); act(); }
 });
 let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (S.stage === 'dash') fitView(false); }, 120); });
+Sync.probe();
 
 /* sector-driven chrome: nav, CTAs, switcher */
 (() => {
@@ -1607,6 +2280,9 @@ if (ST) {
 </html>
 """
 
-html = TEMPLATE.replace('/*__DATA__*/null', json.dumps(DATA, ensure_ascii=False).replace('</', '<\\/'))
+# case facts, card sentences, uncertainty rule and the offline copilot: one file the console and the tests share
+caselogic = (ROOT / 'web/caselogic.js').read_text(encoding='utf-8')
+assert '</script' not in caselogic
+html = TEMPLATE.replace('/*__CASELOGIC__*/', caselogic).replace('/*__DATA__*/null', json.dumps(DATA, ensure_ascii=False).replace('</', '<\\/'))
 (ROOT / 'web/index.html').write_text(html, encoding='utf-8')
 print(f"Wrote web/index.html ({len(html) / 1e6:.2f} MB)")

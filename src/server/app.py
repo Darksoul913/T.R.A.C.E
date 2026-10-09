@@ -465,6 +465,135 @@ def export_cap_xml(analysis_id: str, poly_id: str):
     })
 
 
+# ---------------------------------------------------------------------------------------------
+# "Explain this change" copilot (#45): answers from one case's facts bundle only. The console sends
+# the bundle it shows on the Change-to-Action Card; every number in the reply is checked against it
+# (src/exporters/grounding.py) and sentences that fail are dropped. Offline, the console answers the
+# suggested questions itself from the same facts (web/copilot.js).
+# ---------------------------------------------------------------------------------------------
+COPILOT_MODEL = os.environ.get("TRACE_COPILOT_MODEL", "claude-opus-5-5")
+COPILOT_SYSTEM = (
+    "You explain one satellite change-detection case to a government officer who is not a remote-sensing "
+    "specialist. Use only the facts in the JSON bundle you are given.\n"
+    "- observed_facts: short sentences stating facts from the bundle that answer the question. Copy numbers "
+    "exactly as the bundle writes them, with their units.\n"
+    "- possible_explanations: short hypotheses that could explain what was observed, phrased as possibilities "
+    "the officer should check on the ground, never as conclusions.\n"
+    "Never introduce a number, date, place, asset, law or person that is not in the bundle. If the bundle "
+    "cannot answer the question, say so as the only observed fact. Plain words; gloss any index name once "
+    "(for example 'NDBI, a built-up index'). At most four items per list."
+)
+COPILOT_SCHEMA = {
+    "type": "object",
+    "properties": {"observed_facts": {"type": "array", "items": {"type": "string"}},
+                   "possible_explanations": {"type": "array", "items": {"type": "string"}}},
+    "required": ["observed_facts", "possible_explanations"],
+    "additionalProperties": False,
+}
+
+
+class ExplainRequest(BaseModel):
+    question: str
+    facts: Dict[str, Any]
+
+
+@app.post("/api/explain")
+def explain_change(req: ExplainRequest):
+    from src.exporters.grounding import keep_grounded
+    question = req.question.strip()[:500]
+    if not question:
+        raise HTTPException(status_code=400, detail="Ask a question about the selected case.")
+    try:
+        import anthropic
+    except ImportError:
+        raise HTTPException(status_code=503, detail="Copilot model unavailable: the anthropic package is not installed.")
+    try:
+        client = anthropic.Anthropic()
+        # fallbacks="default": if a safety classifier declines, the API re-runs the request on its
+        # recommended fallback model instead of returning the refusal
+        resp = client.beta.messages.create(
+            model=COPILOT_MODEL,
+            max_tokens=4000,
+            betas=["server-side-fallback-2026-07-01"],
+            fallbacks="default",
+            system=COPILOT_SYSTEM,
+            output_config={"effort": "low", "format": {"type": "json_schema", "schema": COPILOT_SCHEMA}},
+            messages=[{"role": "user", "content": "Case facts (JSON):\n"
+                       + json.dumps(req.facts, ensure_ascii=False, sort_keys=True) + f"\n\nQuestion: {question}"}],
+        )
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=503, detail="Copilot model unavailable: no Anthropic credentials on the server.")
+    except anthropic.RateLimitError:
+        raise HTTPException(status_code=429, detail="Copilot is busy; try again in a minute.")
+    except anthropic.APIStatusError as e:
+        raise HTTPException(status_code=502, detail=f"Copilot model error ({e.status_code}).")
+    except anthropic.APIConnectionError:
+        raise HTTPException(status_code=503, detail="Copilot model unreachable from the server.")
+    except anthropic.AnthropicError as e:
+        raise HTTPException(status_code=503, detail=f"Copilot model unavailable: {e}")
+    except TypeError as e:                  # the SDK raises this when no credential source is configured at all
+        if "authentication" not in str(e):
+            raise
+        raise HTTPException(status_code=503, detail="Copilot model unavailable: no Anthropic credentials on the server.")
+    if resp.stop_reason == "refusal":
+        return {"observed_facts": [], "possible_explanations": [], "removed": 0, "refused": True, "model": resp.model}
+    text = next((b.text for b in resp.content if b.type == "text"), "{}")
+    data = json.loads(text)
+    facts = keep_grounded(data.get("observed_facts", []), req.facts)
+    hyps = keep_grounded(data.get("possible_explanations", []), req.facts)
+    return {"observed_facts": facts["kept"], "possible_explanations": hyps["kept"],
+            "removed": len(facts["dropped"]) + len(hyps["dropped"]), "model": resp.model}
+
+
+# ---------------------------------------------------------------------------------------------
+# Field verification sync (#31). The console keeps an offline outbox of case actions and site photos;
+# when it is served by this app and online it pushes the outbox here and pulls everyone else's entries.
+# ponytail: one JSON file + a process lock; move to the Supabase workflow (#13) for multi-site use.
+# ---------------------------------------------------------------------------------------------
+FIELD_SYNC = os.path.join(SESSIONS_DIR, "field_sync.json")
+_SYNC_LOCK = threading.Lock()
+MAX_PHOTO_CHARS = 4_000_000          # ~3 MB image as a data URI; the console downsizes photos before queueing
+ENTRY_KEYS = {"uid", "ts", "sector", "case", "from", "to", "role", "actor", "note", "action", "assignee", "photos", "method"}
+
+
+class FieldSync(BaseModel):
+    entries: List[Dict[str, Any]] = []
+    photos: List[Dict[str, Any]] = []
+
+
+def _load_sync() -> Dict[str, list]:
+    if os.path.exists(FIELD_SYNC):
+        with open(FIELD_SYNC, encoding="utf-8") as f:
+            return json.load(f)
+    return {"entries": [], "photos": []}
+
+
+@app.post("/api/field/sync")
+def field_sync(req: FieldSync):
+    entries = [{k: v for k, v in e.items() if k in ENTRY_KEYS} for e in req.entries
+               if isinstance(e.get("uid"), str) and isinstance(e.get("case"), str) and isinstance(e.get("to"), str)]
+    photos = [p for p in req.photos if isinstance(p.get("id"), str) and isinstance(p.get("data"), str)
+              and p["data"].startswith("data:image/") and len(p["data"]) <= MAX_PHOTO_CHARS]
+    with _SYNC_LOCK:
+        store = _load_sync()
+        seen = {e["uid"] for e in store["entries"]}
+        new = [e for e in entries if e["uid"] not in seen]
+        store["entries"].extend(new)
+        have = {p["id"] for p in store["photos"]}
+        store["photos"].extend(p for p in photos if p["id"] not in have)
+        with open(FIELD_SYNC, "w", encoding="utf-8") as f:
+            json.dump(store, f, ensure_ascii=False)
+    return {"accepted": len(new), "entries": store["entries"], "photo_ids": [p["id"] for p in store["photos"]]}
+
+
+@app.get("/api/field/photo/{photo_id}")
+def field_photo(photo_id: str):
+    match = next((p for p in _load_sync()["photos"] if p["id"] == photo_id), None)
+    if match is None:
+        raise HTTPException(status_code=404, detail="Photo not synced yet.")
+    return match
+
+
 # Mount frontend static directory
 web_dir = os.path.join(ROOT_DIR, "web")
 if os.path.exists(web_dir):

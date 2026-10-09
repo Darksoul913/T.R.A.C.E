@@ -4,9 +4,11 @@ For each area it writes, on one 10 m UTM grid clipped to the bbox:
   - the change pair as {area}_t1_pre / _t2_post (display RGB, one stretch shared by both dates),
     {area}_t{1,2}_reflectance (B04 B03 B02 B08 B11 B12 x10000) and {area}_cloud_mask (SCL);
   - in data/raw/s2: a dry-season time series {area}_series_{year}_reflectance / _scl, indexed in
-    {area}_series.json, and a seasonal no-change pair {area}_seasonal_* (post-monsoon vs dry season).
+    {area}_series.json, a seasonal no-change pair {area}_seasonal_* (post-monsoon vs dry season), and for
+    disaster events post-event revisits {area}_recovery_{i}_* indexed in {area}_recovery.json.
+Every scene's STAC id, acquisition time and sun angles go into {area}_meta.json (the Scene Passport, #18).
 
-    .venv/bin/python scripts/fetch_s2.py [area ...]
+    .venv/bin/python scripts/fetch_s2.py [area ...] [--only pair,reference,seasonal,series,recovery,meta]
 """
 import json
 import pathlib
@@ -94,6 +96,25 @@ def best(cfg, start, end):
     return items[0]
 
 
+def item_meta(item, scl=None):
+    """Scene identity and acquisition conditions as published in the STAC item (Scene Passport, #18).
+    unobservable = share of OUR window that SCL marks cloud / shadow / no data (the scene-level cloud % is
+    for the whole 110 km tile)."""
+    p = item["properties"]
+    m = {"id": item["id"], "date": p["datetime"][:10], "datetime": p["datetime"], "cloud": p["eo:cloud_cover"],
+         "sun_elevation": p.get("view:sun_elevation"), "sun_azimuth": p.get("view:sun_azimuth"),
+         "processing_baseline": p.get("s2:processing_baseline"), "platform": p.get("platform")}
+    if scl is not None:
+        m["unobservable"] = round(float(np.isin(scl, SCL_UNOBSERVABLE).mean()), 4)
+    return m
+
+
+def item_by_id(item_id):
+    r = requests.get(f"{STAC.rsplit('/', 1)[0]}/collections/sentinel-2-l2a/items/{item_id}", timeout=60)
+    r.raise_for_status()
+    return r.json()
+
+
 def fetch_pair(area, cfg, windows, prefix, tf, crs, shape, out=OUT):
     stacks, meta = [], []
     for tag, (start, end) in zip(("t1", "t2"), windows):
@@ -102,8 +123,7 @@ def fetch_pair(area, cfg, windows, prefix, tf, crs, shape, out=OUT):
         write(out / f"{prefix}_{tag}_reflectance.tif", refl, tf, crs)
         write(out / f"{prefix}_{tag}_scl.tif", scl, tf, crs)
         stacks.append((refl, scl))
-        meta.append({"id": item["id"], "date": item["properties"]["datetime"][:10],
-                     "cloud": item["properties"]["eo:cloud_cover"]})
+        meta.append(item_meta(item, scl))
         print(f"  {prefix} {tag}: {item['id']} ({item['properties']['eo:cloud_cover']:.2f}% cloud)")
     # display RGB with ONE stretch for both dates, so brightness differences stay real
     rgb = np.concatenate([s[0][:3].astype(np.float32) for s in stacks], axis=2)
@@ -142,33 +162,65 @@ def fetch_series(area, cfg, tf, crs, shape):
         refl, scl = read_item(item, tf, crs, shape)
         write(RAW / f"{area}_series_{year}_reflectance.tif", refl, tf, crs)
         write(RAW / f"{area}_series_{year}_scl.tif", scl, tf, crs)
-        index.append({"year": year, "id": item["id"], "date": item["properties"]["datetime"][:10],
-                      "cloud": item["properties"]["eo:cloud_cover"]})
-        print(f"  series {year}: {item['id']}")
+        index.append({"year": year, **item_meta(item, scl)})
+        print(f"  series {year}: {item['id']} ({index[-1]['unobservable']:.1%} of window unobservable)")
     (RAW / f"{area}_series.json").write_text(json.dumps(index, indent=1))
     return index
 
 
-def main(names):
+def fetch_recovery(area, cfg, tf, crs, shape):
+    """Post-event revisits (disaster time-travel, #47): the best scene in each window of cfg['recovery']."""
+    index = []
+    for i, (start, end) in enumerate(cfg["recovery"]):
+        try:
+            item = best(cfg, start, end)
+        except SystemExit as e:
+            print(f"  recovery {start}..{end}: skipped ({e})")
+            continue
+        refl, scl = read_item(item, tf, crs, shape)
+        write(RAW / f"{area}_recovery_{i}_reflectance.tif", refl, tf, crs)
+        write(RAW / f"{area}_recovery_{i}_scl.tif", scl, tf, crs)
+        index.append({"i": i, **item_meta(item, scl)})
+        print(f"  recovery {i}: {item['id']} ({index[-1]['unobservable']:.1%} of window unobservable)")
+    (RAW / f"{area}_recovery.json").write_text(json.dumps(index, indent=1))
+    return index
+
+
+PARTS = ("pair", "reference", "seasonal", "series", "recovery")
+
+
+def main(names, only=PARTS):
     RAW.mkdir(parents=True, exist_ok=True)
     areas = json.loads((ROOT / "data/watch_areas.json").read_text())
     for area in names or areas:
         cfg = areas[area]
         tf, crs, shape = grid(cfg["bbox"])
         print(f"[{area}] {shape[1]}x{shape[0]} px at {RES:.0f} m, {crs}")
-        meta = {"pair": fetch_pair(area, cfg, cfg["pair"], area, tf, crs, shape)}
-        if "reference" in cfg:
+        path = OUT / f"{area}_meta.json"
+        meta = json.loads(path.read_text()) if path.exists() else {}
+        if "pair" in only:
+            meta["pair"] = fetch_pair(area, cfg, cfg["pair"], area, tf, crs, shape)
+        if "meta" in only:   # passport fields for an already-fetched pair, from its STAC items (no pixels)
+            meta["pair"] = [{**m, **item_meta(item_by_id(m["id"]))} for m in meta["pair"]]
+        if "reference" in cfg and "reference" in only:
             write_reference(area, cfg["reference"], tf, crs, shape)
             meta["reference"] = cfg["reference"]
-        if "seasonal_pair" in cfg:
+        if "seasonal_pair" in cfg and "seasonal" in only:
             meta["seasonal_pair"] = fetch_pair(area, cfg, cfg["seasonal_pair"], f"{area}_seasonal", tf, crs, shape, RAW)
-        if "series" in cfg:
+        if "series" in cfg and "series" in only:
             meta["series"] = fetch_series(area, cfg, tf, crs, shape)
-        (OUT / f"{area}_meta.json").write_text(json.dumps(meta, indent=1))
+        if "recovery" in cfg and "recovery" in only:
+            meta["recovery"] = fetch_recovery(area, cfg, tf, crs, shape)
+        path.write_text(json.dumps(meta, indent=1))
 
 
 if __name__ == "__main__":
     assert boa_offset({"properties": {"earthsearch:boa_offset_applied": True, "s2:processing_baseline": "05.11"}}) == 0.0
     assert boa_offset({"properties": {"earthsearch:boa_offset_applied": False, "s2:processing_baseline": "05.11"}}) == -0.1
     assert boa_offset({"properties": {"s2:processing_baseline": "02.11"}}) == 0.0
-    main(sys.argv[1:])
+    args = sys.argv[1:]
+    only = PARTS
+    if "--only" in args:
+        k = args.index("--only")
+        only, args = tuple(args[k + 1].split(",")), args[:k] + args[k + 2:]
+    main(args, only)

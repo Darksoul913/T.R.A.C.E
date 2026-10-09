@@ -3,12 +3,22 @@
   {
    "id": "S2B_42RYV_20250618_0_L2A",
    "date": "2025-06-18",
-   "cloud": 0.002552
+   "cloud": 0.002552,
+   "datetime": "2025-06-18T06:00:31.412000Z",
+   "sun_elevation": 71.8860199014434,
+   "sun_azimuth": 110.634748811098,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b"
   },
   {
    "id": "S2A_42RYV_20250903_0_L2A",
    "date": "2025-09-03",
-   "cloud": 23.131098
+   "cloud": 23.131098,
+   "datetime": "2025-09-03T06:00:45.385000Z",
+   "sun_elevation": 60.9677002951197,
+   "sun_azimuth": 140.891762726821,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2a"
   }
  ],
  "reference": {
@@ -16,5 +26,43 @@
   "event": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_observedEventA_v1.json",
   "aoi": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_areaOfInterestA_v1.json",
   "depth": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_floodDepthA_v1.json"
- }
+ },
+ "recovery": [
+  {
+   "i": 0,
+   "id": "S2C_42RYV_20251031_0_L2A",
+   "date": "2025-10-31",
+   "datetime": "2025-10-31T06:00:44.370000Z",
+   "cloud": 0.003062,
+   "sun_elevation": 42.7183250612242,
+   "sun_azimuth": 161.320075236221,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2c",
+   "unobservable": 0.0
+  },
+  {
+   "i": 1,
+   "id": "S2B_43RBQ_20251205_0_L2A",
+   "date": "2025-12-05",
+   "datetime": "2025-12-05T06:00:25.040000Z",
+   "cloud": 0.000859,
+   "sun_elevation": 34.5558540494008,
+   "sun_azimuth": 162.982532801435,
+   "processing_baseline": "05.11",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0
+  },
+  {
+   "i": 2,
+   "id": "S2B_42RYV_20260414_0_L2A",
+   "date": "2026-04-14",
+   "datetime": "2026-04-14T06:00:29.094000Z",
+   "cloud": 0.004031,
+   "sun_elevation": 62.445247026910096,
+   "sun_azimuth": 138.009214608193,
+   "processing_baseline": "05.12",
+   "platform": "sentinel-2b",
+   "unobservable": 0.0004
+  }
+ ]
 }
