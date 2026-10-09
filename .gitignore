@@ -1,0 +1,76 @@
+# ==============================================================================
+# ChangeIntel (GEOAI 04) - .gitignore
+# ==============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Heavy Raw Datasets & Archive Dumps
+Onera Satellite Change Detection/
+data/raw/
+*.tar.gz
+*.tar
+*.zip
+*.7z
+
+# Model Checkpoints & Large Binaries (>50MB)
+checkpoints/*.pt
+checkpoints/*.pth
+checkpoints/*.onnx
+checkpoints/*.bin
+!checkpoints/.gitkeep
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+
+# Environment Variables & Secrets
+.env
+.env.*
+*.key
+*.pem
+*.secret
+
+# Logs & Temporary Scratch Artifacts
+*.log
+scratch/
+.system_generated/
