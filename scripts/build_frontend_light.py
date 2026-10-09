@@ -1,1807 +1,1241 @@
-import json, os, base64
+"""Builds web/index.html: self-contained ChangeIntel console (globe landing + change dashboard).
 
-with open('web/dataset.json', 'r') as f:
-    dataset = json.load(f)
+Run from anywhere:  python scripts/build_frontend_light.py
+Everything (imagery, Earth texture, export files) is inlined so the page works offline.
+"""
+import base64
+import json
+import pathlib
 
-with open('web/embedded_assets.json', 'r') as f:
-    assets = json.load(f)
+ROOT = pathlib.Path(__file__).resolve().parent.parent
 
-with open('data/outputs/mumbai_change_intelligence.geojson', 'r') as f:
-    mumbai_geojson_raw = f.read()
 
-with open('data/outputs/sachet_cap_CHG_0001.xml', 'r') as f:
-    cap_xml_raw = f.read()
+def b64(rel):
+    return base64.b64encode((ROOT / rel).read_bytes()).decode()
 
-with open('data/outputs/sitrep_test2.pdf', 'rb') as f:
-    pdf_base64 = base64.b64encode(f.read()).decode('utf-8')
 
-with open('data/outputs/mumbai_change_intelligence.gpkg', 'rb') as f:
-    gpkg_base64 = base64.b64encode(f.read()).decode('utf-8')
+# web/scenes.json is produced by scripts/build_scenes.py (runs the real pipeline)
+scenes = json.loads((ROOT / 'web/scenes.json').read_text())
+OUT = 'data/outputs/'
 
-dataset_json_str = json.dumps(dataset)
-assets_json_str = json.dumps(assets)
-pdf_b64_str = json.dumps(pdf_base64)
-gpkg_b64_str = json.dumps(gpkg_base64)
-geojson_str = json.dumps(mumbai_geojson_raw)
-xml_str = json.dumps(cap_xml_raw)
+DATA = {
+    'scenes': scenes,
+    'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text()),
+    # NASA Blue Marble (public domain), equirectangular 2048x1024
+    'earth': 'data:image/jpeg;base64,' + b64('web/assets/earth_equirect.jpg'),
+    'files': {k: {'geojson': (ROOT / OUT / sc['files']['geojson']).read_text(),
+                  'gpkg': b64(OUT + sc['files']['gpkg']),
+                  'sitrep': b64(OUT + sc['files']['sitrep'])} for k, sc in scenes.items()},
+}
 
-html_content = f'''<!DOCTYPE html>
+TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ChangeIntel — Autonomous Satellite Change Intelligence</title>
-  
-  <!-- Plus Jakarta Sans & JetBrains Mono Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChangeIntel — Change, mapped from orbit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=block" rel="stylesheet">
+<style>
+/* ============ TOKENS — earth palette, light ============ */
+:root{
+  --u: min(calc(100vw / 1280), calc(100dvh / 760));
+  --paper:#F2ECE1; --paper-2:#E7DFCF; --card:#FBF8F2; --card-2:#F5F0E6;
+  --ink:#1E2620; --ink-2:#3B453C; --muted:#69705F; --faint:#9AA08F;
+  --line:rgba(30,38,32,.11); --line-2:rgba(30,38,32,.2);
+  --forest:#2F4A35; --forest-h:#253C2B; --moss:#5E7A3E; --ocean:#2D6A78; --clay:#B4612F; --sky:#DCE7E3;
+  --crit:#A3382B; --high:#C46A2A; --mod:#B08A1E; --minor:#3A7C88; --fa:#7A4E7A;
+  --btn-ink:#F6F1E7;
+  --glass-fill:rgba(251,248,242,.72); --glass-line:rgba(30,38,32,.14);
+  --dx: 8.5; --dy: -40;
+  --e-reveal: cubic-bezier(.16, 1, .3, 1);
+  --e-soft:   cubic-bezier(.25, .8, .3, 1);
+  --mono:'JetBrains Mono', ui-monospace, Menlo, monospace;
+}
+@supports not (height: 100dvh){ :root{ --u: min(calc(100vw / 1280), calc(100vh / 760)); } }
 
-  <style>
-    /* ============================================================
-       0. REFINED LIGHT MODE TOKENS (No AI slop, Enterprise GIS design)
-       ============================================================ */
-    :root {{
-      --bg-page: #f8fafc;
-      --bg-surface: #ffffff;
-      --bg-surface-subtle: #f1f5f9;
-      --text-main: #0f172a;
-      --text-muted: #475569;
-      --text-sub: #64748b;
-      --border-subtle: #e2e8f0;
-      --border-medium: #cbd5e1;
-      
-      /* Executive Palette */
-      --primary: #2563eb;
-      --primary-hover: #1d4ed8;
-      --primary-subtle: #eff6ff;
-      --emerald: #059669;
-      --emerald-subtle: #ecfdf5;
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;padding:0;overflow:hidden}
+body{
+  font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:geometricPrecision;
+  color:var(--ink);
+  background:
+    radial-gradient(90% 60% at 50% 100%, rgba(165,200,205,.35) 0%, transparent 70%),
+    radial-gradient(120% 70% at 50% 0%, #F7F3EA 0%, transparent 60%),
+    var(--paper);
+}
+button{font-family:inherit;color:inherit}
+.mono{font-family:var(--mono)}
+a:focus-visible,button:focus-visible,[tabindex]:focus-visible,input:focus-visible{outline:2px solid var(--ocean);outline-offset:3px;border-radius:99px}
 
-      /* Severity Colors (4-Tier Matrix) */
-      --sev-critical: #dc2626;
-      --sev-critical-bg: #fef2f2;
-      --sev-high: #ea580c;
-      --sev-high-bg: #fff7ed;
-      --sev-moderate: #d97706;
-      --sev-moderate-bg: #fffbeb;
-      --sev-minor: #2563eb;
-      --sev-minor-bg: #eff6ff;
+/* ============ GLOBE + FLY LAYERS ============ */
+#globe{position:fixed;inset:0;width:100vw;height:100dvh;z-index:1;pointer-events:none;display:block}
+#flyTile{position:fixed;left:0;top:0;z-index:6;pointer-events:none;opacity:0;border-radius:2px;
+  box-shadow:0 30px 80px rgba(30,38,32,.25);will-change:transform,width,height,opacity}
+#flyLabel{position:fixed;left:0;top:0;z-index:6;pointer-events:none;opacity:0;white-space:nowrap;
+  transform:translate(-50%,-100%);font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--ink);
+  background:var(--card);border:1px solid var(--line-2);border-radius:99px;padding:6px 12px;
+  box-shadow:0 8px 24px rgba(30,38,32,.15)}
+#flyLabel span{font-family:var(--mono);font-weight:500;color:var(--muted);margin-left:8px}
 
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-      --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
-    }}
+/* ============ HERO (UI.txt, earth light) ============ */
+.hero{position:relative;width:100vw;height:100dvh;overflow:hidden;z-index:2;
+  transition:opacity .55s ease, filter .55s ease}
+@supports not (height: 100dvh){ .hero{height:100vh} }
+.hero.leaving{opacity:0;filter:blur(6px);pointer-events:none}
 
-    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+.nav{position:absolute;top:0;left:0;right:0;height:calc(67 * var(--u));display:flex;align-items:center;
+  padding-left:calc(24.5 * var(--u));padding-right:calc(50.7 * var(--u));z-index:3}
+.logo{font-weight:800;font-size:calc(26 * var(--u));letter-spacing:calc(0.45 * var(--u));
+  transform:translateY(calc(-2.4 * var(--u)));line-height:1;color:var(--ink);text-decoration:none;white-space:nowrap}
+.logo b{color:var(--moss);font-weight:800}
+.nav-links{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) translateX(calc(-23 * var(--u)));
+  display:flex;align-items:center;gap:calc(24.3 * var(--u));white-space:nowrap}
+.nav-links a{color:var(--ink-2);text-decoration:none;font-size:calc(11.5 * var(--u));font-weight:500;
+  letter-spacing:calc(-0.15 * var(--u));line-height:1;transition:color .18s ease;cursor:pointer}
+.nav-links a:hover{color:var(--ink)}
+.nav-actions{margin-left:auto;display:flex;align-items:center;gap:calc(6.8 * var(--u))}
+.btn{display:inline-flex;align-items:center;justify-content:center;font-family:inherit;text-decoration:none;
+  white-space:nowrap;border:0;cursor:pointer}
+.btn-login{height:calc(28 * var(--u));padding:0 calc(12.9 * var(--u));border-radius:calc(14 * var(--u));
+  background:var(--card);color:var(--ink-2);border:1px solid var(--line);font-size:calc(11.5 * var(--u));font-weight:500;
+  letter-spacing:calc(-0.15 * var(--u));transition:background .18s ease,color .18s ease}
+.btn-login:hover{background:#fff;color:var(--ink)}
+.btn-nav-start{height:calc(28 * var(--u));padding-left:calc(13.5 * var(--u));padding-right:calc(14.5 * var(--u));
+  border-radius:calc(14 * var(--u));background:var(--forest);color:var(--btn-ink);font-size:calc(11.1 * var(--u));
+  font-weight:500;gap:calc(7 * var(--u));transition:background .18s ease}
+.btn-nav-start:hover{background:var(--forest-h)}
+.btn-nav-start .arw{width:calc(11.5 * var(--u));height:calc(9.6 * var(--u))}
+.arw{flex:0 0 auto;display:block}
+.burger{display:none;margin-left:auto;width:calc(40 * var(--u));height:calc(28 * var(--u));align-items:center;
+  justify-content:center;background:var(--card);border:1px solid var(--line);border-radius:calc(14 * var(--u));cursor:pointer;padding:0}
+.burger span{display:block;width:16px;height:1.5px;background:var(--ink);border-radius:2px;position:relative}
+.burger span::before,.burger span::after{content:"";position:absolute;left:0;width:16px;height:1.5px;background:var(--ink);border-radius:2px}
+.burger span::before{top:-5px} .burger span::after{top:5px}
 
-    body {{
-      min-height: 100vh;
-      background-color: var(--bg-page);
-      color: var(--text-main);
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      overflow-x: hidden;
-    }}
+.hero-inner{position:absolute;left:50%;top:50%;
+  transform:translate(-50%,-50%) translate(calc(var(--dx) * var(--u)), calc(var(--dy) * var(--u)));
+  width:max-content;text-align:center;z-index:2}
+.ln,.ln-i{display:block} .ln-i{white-space:nowrap}
+h1{margin:0;font-weight:500;font-size:calc(89 * var(--u));line-height:calc(90 * var(--u));
+  letter-spacing:calc(-1 * var(--u));color:var(--ink)}
+h1 .ln:nth-child(2) .ln-i{color:var(--forest)}
+.sub{margin:calc(16.1 * var(--u)) 0 0;font-weight:300;font-size:calc(17.4 * var(--u));line-height:calc(27 * var(--u));
+  letter-spacing:calc(-0.30 * var(--u));color:var(--ink-2)}
+.ctas{margin-top:calc(21.8 * var(--u));display:flex;align-items:center;justify-content:center;
+  transform:translateX(calc(-0.75 * var(--u)));gap:calc(7 * var(--u))}
+.btn-lg{height:calc(39 * var(--u));border-radius:calc(19.5 * var(--u));font-size:calc(13.3 * var(--u));font-weight:500;
+  letter-spacing:calc(-0.3 * var(--u));gap:calc(9 * var(--u))}
+.btn-primary{background:var(--forest);color:var(--btn-ink);padding-left:calc(18.2 * var(--u));padding-right:calc(19.2 * var(--u));
+  transition:background .18s ease,transform .18s ease}
+.btn-primary:hover{background:var(--forest-h)}
+.btn-ghost{background:var(--glass-fill);color:var(--ink-2);padding:0 calc(17.4 * var(--u));border:1px solid var(--glass-line);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);transition:background .18s ease,border-color .18s ease}
+.btn-ghost:hover{background:rgba(251,248,242,.95);border-color:var(--line-2)}
+.btn-lg .arw{width:calc(13 * var(--u));height:calc(10.8 * var(--u))}
+.meta{margin-top:calc(18 * var(--u));font-family:var(--mono);font-size:calc(10.5 * var(--u));color:var(--muted);letter-spacing:.02em}
+.meta i{font-style:normal;color:var(--moss)}
 
-    .mono {{
-      font-family: 'JetBrains Mono', monospace;
-    }}
+.menu{display:none}
+@keyframes menuIn{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
 
-    /* Subtle Cartographic Grid Pattern */
-    .bg-carto-grid {{
-      background-image: 
-        radial-gradient(circle at 50% 20%, rgba(37, 99, 235, 0.04) 0%, transparent 60%),
-        linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-      background-size: 100% 100%, 32px 32px, 32px 32px;
-    }}
+@media (max-width:1160px){
+  :root{ --u: min(max(0.9px, min(calc(100vw / 1280), calc(100dvh / 760))), calc((100vw - 72px) / 575), calc(100dvh / 620)); }
+  .nav{height:max(58px, calc(67 * var(--u)));padding-left:max(24px, calc(28 * var(--u)));padding-right:max(24px, calc(28 * var(--u)))}
+  .nav-links,.nav-actions{display:none}
+  .burger{display:flex;width:max(46px, calc(48 * var(--u)));height:max(38px, calc(34 * var(--u)));border-radius:999px}
+  .hero-inner{max-width:calc(100vw - 48px)}
+  .sub{font-size:max(16px, calc(17.4 * var(--u)));line-height:max(25px, calc(27 * var(--u)))}
+  .ctas{margin-top:max(26px, calc(21.8 * var(--u)));gap:max(10px, calc(7 * var(--u)))}
+  .btn-lg{height:max(44px, calc(39 * var(--u)));border-radius:max(22px, calc(19.5 * var(--u)));font-size:max(15px, calc(13.3 * var(--u)));gap:max(10px, calc(9 * var(--u)))}
+  .btn-primary{padding-left:max(21px, calc(18.2 * var(--u)));padding-right:max(22px, calc(19.2 * var(--u)))}
+  .btn-ghost{padding-left:max(20px, calc(17.4 * var(--u)));padding-right:max(21px, calc(18.4 * var(--u)))}
+  .btn-lg .arw{width:max(14px, calc(13 * var(--u)));height:max(11.6px, calc(10.8 * var(--u)))}
+  .meta{font-size:max(11px, calc(10.5 * var(--u)))}
+  .menu{position:absolute;top:calc(max(58px, calc(67 * var(--u))) - 6px);right:max(24px, calc(28 * var(--u)));
+    width:min(320px, calc(100vw - 48px));background:rgba(251,248,242,.92);-webkit-backdrop-filter:blur(22px);backdrop-filter:blur(22px);
+    border:1px solid var(--line);border-radius:20px;padding:10px 8px 12px;flex-direction:column;
+    box-shadow:0 24px 60px rgba(30,38,32,.18);transform-origin:top right;z-index:5}
+  .menu.open{display:flex;animation:menuIn .18s ease both}
+  .menu a{color:var(--ink-2);text-decoration:none;font-size:15px;font-weight:500;padding:12px 14px;border-radius:12px;
+    transition:background .18s ease,color .18s ease;cursor:pointer}
+  .menu a:hover{background:rgba(30,38,32,.05);color:var(--ink)}
+  .menu .divider{height:1px;background:var(--line);margin:8px 14px}
+  .menu .m-start{display:flex;align-items:center;justify-content:center;gap:9px;background:var(--forest);color:var(--btn-ink);
+    margin:6px 8px 0;padding:13px 16px;border-radius:14px;font-weight:600}
+  .menu .m-start:hover{background:var(--forest-h);color:var(--btn-ink)}
+  .menu .m-start .arw{width:13px;height:11px}
+}
+@media (max-width:552px){
+  :root{--u:1px}
+  .nav{height:56px;padding:0 20px}
+  .logo{font-size:22px;letter-spacing:-.4px}
+  .burger{width:42px;height:36px}
+  .hero-inner{position:absolute;left:0;right:0;top:44%;width:auto;max-width:none;padding:0 20px;transform:translateY(-50%)}
+  h1{font-size:min(68px, calc((100vw - 44px) / 8.4));line-height:1.04;letter-spacing:-.02em}
+  .sub{margin-top:16px;font-size:clamp(15.5px, 4vw, 16.5px);line-height:1.6;letter-spacing:0;max-width:42ch;margin-left:auto;margin-right:auto}
+  .sub br{display:none}
+  .ctas{margin-top:24px;gap:10px;transform:none;flex-wrap:wrap}
+  .btn-lg{height:46px;border-radius:23px;font-size:15px;gap:9px}
+  .btn-primary{padding-left:20px;padding-right:21px}
+  .btn-ghost{padding-left:19px;padding-right:20px}
+  .btn-lg .arw{width:13px;height:11px}
+  .meta{font-size:11px;margin-top:16px}
+  .menu{top:50px;left:16px;right:16px;width:auto}
+}
+@media (max-width:353px){ .ctas{flex-direction:column;align-items:center} .btn-lg{width:min(100%,272px)} }
+@media (max-width:552px) and (max-height:460px){
+  h1{font-size:min(44px, calc((100vw - 44px) / 8.4))}
+  .sub{margin-top:12px;font-size:15px;line-height:1.5}
+  .ctas{margin-top:18px}
+}
 
-    /* ============================================================
-       1. TOP NAVIGATION BAR (Clean, modern light mode header)
-       ============================================================ */
-    .navbar {{
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      height: 64px;
-      background: rgba(255, 255, 255, 0.94);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      padding: 0 28px;
-      gap: 20px;
-    }}
+/* entrance */
+html.anim .ln{overflow:hidden;padding-top:.26em;margin-top:-.26em}
+html.anim .ln-i{transform:translateY(100%)}
+html.anim .logo, html.anim .nav-links a, html.anim .nav-actions .btn,
+html.anim .burger, html.anim .sub, html.anim .ctas .btn, html.anim .meta{opacity:0}
+.ln-i,.logo,.nav-links a,.nav-actions .btn,.sub,.ctas .btn{will-change:transform,opacity}
+@keyframes lineRise{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes subIn{from{opacity:0;transform:translateY(calc(14 * var(--u)));filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@keyframes subInFlat{from{opacity:0;transform:translateY(calc(12 * var(--u)))}to{opacity:1;transform:none}}
+@keyframes pillIn{from{opacity:0;transform:translateY(calc(8 * var(--u))) scale(.972)}to{opacity:1;transform:none}}
+@keyframes liftIn{from{opacity:0;transform:translateY(calc(9 * var(--u)))}to{opacity:1;transform:none}}
+@keyframes logoIn{from{opacity:0;transform:translateY(calc(-2.4 * var(--u))) translateY(calc(9 * var(--u)))}
+                  to{opacity:1;transform:translateY(calc(-2.4 * var(--u)))}}
+html.anim.go .ln-i{animation:lineRise 1.05s var(--e-reveal) both}
+html.anim.go .ln:nth-child(1) .ln-i{animation-delay:.12s}
+html.anim.go .ln:nth-child(2) .ln-i{animation-delay:.22s}
+html.anim.go .logo{animation:logoIn .62s var(--e-soft) .46s both}
+html.anim.go .nav-links a{animation:liftIn .55s var(--e-soft) both}
+html.anim.go .nav-links a:nth-child(1){animation-delay:.540s}
+html.anim.go .nav-links a:nth-child(2){animation-delay:.585s}
+html.anim.go .nav-links a:nth-child(3){animation-delay:.630s}
+html.anim.go .sub{animation:subIn .85s var(--e-reveal) .58s both}
+html.anim.go .meta{animation:liftIn .7s var(--e-soft) 1.0s both}
+html.anim.go .btn-login{animation:pillIn .55s var(--e-soft) .68s both}
+html.anim.go .burger{animation:pillIn .55s var(--e-soft) .68s both}
+html.anim.go .btn-nav-start{animation:pillIn .55s var(--e-soft) .73s both}
+html.anim.go .ctas .btn-primary{animation:pillIn .70s var(--e-reveal) .90s both}
+html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
+@media (max-width:552px){
+  html.anim.go .sub{animation-name:subInFlat}
+  html.anim.go .ln-i{animation-duration:.92s}
+  html.anim.go .ctas .btn-primary{animation-delay:.84s}
+  html.anim.go .ctas .btn-ghost{animation-delay:.90s}
+}
+@media (prefers-reduced-motion:reduce){
+  html.anim .ln{overflow:visible;padding-top:0;margin-top:0}
+  html.anim .ln-i{transform:none}
+  html.anim .logo, html.anim .nav-links a, html.anim .nav-actions .btn,
+  html.anim .burger, html.anim .sub, html.anim .ctas .btn, html.anim .meta{opacity:1}
+  *{transition:none!important;animation:none!important}
+}
 
-    .nav-brand {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      text-decoration: none;
-      cursor: pointer;
-    }}
-    .nav-logo-icon {{
-      width: 28px;
-      height: 28px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #2563eb 0%, #0284c7 100%);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-weight: 800;
-      font-size: 14px;
-      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
-    }}
-    .nav-logo-text {{
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-main);
-      letter-spacing: -0.3px;
-    }}
-    .nav-logo-text span {{
-      color: var(--primary);
-    }}
+/* ============ DASHBOARD ============ */
+.dash{position:fixed;inset:0;z-index:3;background:var(--paper);display:grid;grid-template-rows:auto minmax(0,1fr);
+  font-size:13px;opacity:0;visibility:hidden;transition:opacity .45s ease,visibility 0s linear .45s}
+.dash.on{opacity:1;visibility:visible;transition:opacity .45s ease}
+.dash .rise{opacity:0;transform:translateY(8px);transition:opacity .5s ease,transform .7s var(--e-reveal);
+  transition-delay:calc(var(--d,0) * 55ms + 120ms)}
+.dash.on .rise{opacity:1;transform:none}
 
-    .nav-status-pill {{
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 4px 12px;
-      border-radius: 99px;
-      background: var(--emerald-subtle);
-      border: 1px solid rgba(5, 150, 105, 0.25);
-      color: var(--emerald);
-      font-size: 11.5px;
-      font-weight: 600;
-      letter-spacing: 0.2px;
-    }}
-    .nav-status-dot {{
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: #059669;
-      box-shadow: 0 0 6px rgba(5, 150, 105, 0.6);
-      animation: pulse 2s infinite;
-    }}
-    @keyframes pulse {{
-      0%, 100% {{ opacity: 1; transform: scale(1); }}
-      50% {{ opacity: 0.5; transform: scale(1.3); }}
-    }}
+.topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tb-brand{display:flex;align-items:center;gap:8px;border:0;background:none;cursor:pointer;padding:6px 10px 6px 6px;border-radius:99px}
+.tb-brand:hover{background:var(--card-2)}
+.tb-brand svg{color:var(--forest)}
+.tb-brand strong{font-weight:800;font-size:15px}
+.tb-brand strong b{color:var(--moss)}
+.tb-sep{width:1px;height:26px;background:var(--line)}
+.tb-title{min-width:0;margin-right:auto}
+.tb-title div:first-child{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tb-title div:last-child{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+.seg{display:inline-flex;background:var(--card-2);border:1px solid var(--line);border-radius:99px;padding:3px;gap:2px}
+.seg button{border:0;background:none;padding:6px 12px;border-radius:99px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(30,38,32,.14)}
+.seg button[data-act="mode:naive"][aria-pressed="true"]{background:var(--fa);color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:99px;
+  padding:7px 13px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-2);white-space:nowrap}
+.pill:hover{background:#fff;color:var(--ink)}
 
-    .nav-actions {{
-      margin-left: auto;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }}
+.dbody{display:grid;grid-template-columns:290px minmax(0,1fr) 330px;grid-template-areas:"left center right";
+  gap:12px;padding:12px;min-height:0}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto;scrollbar-width:thin}
+.left{grid-area:left} .right{grid-area:right}
+.center{grid-area:center;display:flex;flex-direction:column;gap:12px;min-height:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+.card h3,.card-h{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  display:flex;align-items:center;justify-content:space-between;gap:8px}
+.card-h .mono{letter-spacing:0;text-transform:none;font-weight:500}
 
-    .btn {{
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      font-family: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      border-radius: 8px;
-      border: 1px solid transparent;
-      padding: 0 14px;
-      height: 36px;
-      cursor: pointer;
-      text-decoration: none;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-    }}
-    .btn-secondary {{
-      background: #ffffff;
-      border-color: var(--border-medium);
-      color: var(--text-muted);
-    }}
-    .btn-secondary:hover {{
-      background: var(--bg-surface-subtle);
-      color: var(--text-main);
-      border-color: #94a3b8;
-    }}
-    .btn-primary {{
-      background: var(--primary);
-      color: #ffffff;
-      box-shadow: var(--shadow-sm);
-    }}
-    .btn-primary:hover {{
-      background: var(--primary-hover);
-      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
-      transform: translateY(-1px);
-    }}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:11px 14px}
+.kpi-l{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kpi-v{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
+.kpi-v small{font-size:12px;color:var(--muted);font-weight:600;margin-left:3px}
+.kpi-s{font-size:11px;color:var(--muted);margin-top:1px}
 
-    /* ============================================================
-       2. STAGE 1: REAL EARTH ORBITAL VIEW (Light Mode)
-       ============================================================ */
-    .hero-stage {{
-      padding: 44px 24px 60px;
-      max-width: 1240px;
-      margin: 0 auto;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      transition: opacity 0.4s ease;
-    }}
-    .hero-stage.is-hidden {{
-      display: none;
-    }}
+/* legend */
+.legend{display:flex;flex-direction:column;gap:2px}
+.lg-row{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:8px;cursor:pointer;user-select:none}
+.lg-row:hover{background:var(--card-2)}
+.lg-row input{margin:0;accent-color:var(--forest)}
+.sw{width:12px;height:12px;border-radius:3px;background:color-mix(in srgb, var(--c) 35%, transparent);border:2px solid var(--c);flex:none}
+.lg-row .n{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.lg-row.off{opacity:.45}
+.lg-row.fa .sw{border-style:dashed}
+.slider{display:flex;align-items:center;gap:10px;margin-top:10px;padding:0 8px;font-size:12px;color:var(--muted)}
+.slider input{flex:1;accent-color:var(--forest)}
 
-    .hero-eyebrow {{
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      border-radius: 99px;
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-      color: #1d4ed8;
-      font-size: 12px;
-      font-weight: 600;
-      margin-bottom: 18px;
-    }}
+/* table */
+.tcard{display:flex;flex-direction:column;min-height:240px;flex:1}
+.search{width:100%;border:1px solid var(--line);background:var(--card-2);border-radius:9px;padding:8px 10px;font:inherit;font-size:12.5px;color:var(--ink);margin-bottom:8px}
+.search:focus-visible{border-radius:9px}
+.tscroll{overflow:auto;flex:1;min-height:0;margin:0 -6px;scrollbar-width:thin}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{position:sticky;top:0;background:var(--card);text-align:left;font-weight:600;color:var(--muted);font-size:11px;padding:0}
+th button{border:0;background:none;padding:6px;font:inherit;color:inherit;cursor:pointer;width:100%;text-align:inherit}
+th button:hover{color:var(--ink)}
+th.num,td.num{text-align:right}
+td{padding:7px 6px;border-top:1px solid var(--line);white-space:nowrap}
+tbody tr{cursor:pointer}
+tbody tr:hover td{background:var(--card-2)}
+tbody tr[aria-selected="true"] td{background:color-mix(in srgb, var(--forest) 9%, transparent)}
+td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c);margin-right:7px;vertical-align:1px}
+.tfoot{font-size:11px;color:var(--muted);padding-top:8px}
+.empty{padding:18px 6px;color:var(--muted);text-align:center}
 
-    .hero-title {{
-      font-size: clamp(32px, 5vw, 54px);
-      font-weight: 800;
-      line-height: 1.15;
-      letter-spacing: -1.2px;
-      color: var(--text-main);
-      max-width: 860px;
-    }}
-    .hero-title span {{
-      color: var(--primary);
-    }}
+/* map */
+.map{position:relative;flex:1;min-height:320px;border-radius:14px;overflow:hidden;border:1px solid var(--line);touch-action:none;cursor:grab;
+  background:var(--paper-2) radial-gradient(rgba(30,38,32,.09) 1px, transparent 1.2px) 0 0/14px 14px;user-select:none;-webkit-user-select:none}
+.map.grabbing{cursor:grabbing}
+.layer{position:absolute;inset:0;pointer-events:none}
+.world{position:absolute;left:0;top:0;transform-origin:0 0}
+.world img{display:block;width:100%;height:100%;-webkit-user-drag:none}
+#layT2{transition:opacity .2s ease}
+#pins{position:absolute;inset:0}
+#vec{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.poly{fill:var(--c);fill-opacity:var(--fill,.35);stroke:var(--c);stroke-width:1.6;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:pointer;transition:fill-opacity .15s}
+.poly:hover,.poly.hl{fill-opacity:calc(var(--fill,.35) + .25)}
+.poly.sel{stroke-width:3;fill-opacity:calc(var(--fill,.35) + .2)}
+.halo{fill:none;stroke:#fff;stroke-width:7;stroke-opacity:.9;vector-effect:non-scaling-stroke;pointer-events:none}
+.fa{fill:var(--fa);fill-opacity:.32;stroke:var(--fa);stroke-width:1.8;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
+.pin{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2.5px solid var(--c);
+  background:color-mix(in srgb, var(--c) 30%, #fff);box-shadow:0 0 0 2px rgba(255,255,255,.85),0 2px 6px rgba(0,0,0,.3);
+  transform:scale(var(--inv,1));pointer-events:auto;cursor:pointer}
+.pin.big{display:none}
+.pin.sel{width:20px;height:20px;margin:-10px 0 0 -10px;background:var(--c)}
+.pin.sel::after{content:"";position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--c);animation:ping 1.6s ease-out infinite}
+@keyframes ping{from{transform:scale(.6);opacity:1}to{transform:scale(1.5);opacity:0}}
 
-    .hero-subtitle {{
-      margin-top: 14px;
-      font-size: clamp(15px, 2vw, 17px);
-      color: var(--text-muted);
-      max-width: 700px;
-      line-height: 1.6;
-    }}
+.curtain{position:absolute;top:0;bottom:0;left:50%;width:0;z-index:4}
+.curtain::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(30,38,32,.25),0 0 12px rgba(0,0,0,.25)}
+.knob{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:var(--card);
+  border:1px solid var(--line-2);box-shadow:0 4px 14px rgba(30,38,32,.25);display:grid;place-items:center;cursor:ew-resize;touch-action:none}
+.knob:focus-visible{border-radius:50%}
+.map[data-view="before"] .curtain,.map[data-view="after"] .curtain{display:none}
+.map[data-view="before"] #layT2{opacity:0}
 
-    /* Real Earth Globe Container */
-    .globe-stage-wrapper {{
-      margin-top: 32px;
-      position: relative;
-      width: min(90vw, 480px);
-      height: min(90vw, 480px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }}
+.ctl{position:absolute;z-index:5;display:flex;align-items:center;gap:6px;cursor:default}
+.chip{background:rgba(251,248,242,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid var(--line);border-radius:99px;
+  padding:6px 11px;font-size:11.5px;font-weight:600;color:var(--ink-2);box-shadow:0 2px 8px rgba(30,38,32,.1);white-space:nowrap}
+.chip .mono{font-weight:500;color:var(--muted);margin-left:5px}
+.tl{top:10px;left:10px} .tr{top:10px;right:10px} .tc{top:10px;left:50%;transform:translateX(-50%)}
+.bl{bottom:10px;left:10px;flex-direction:column;align-items:flex-start;gap:6px} .br{bottom:10px;right:10px;flex-direction:column}
+.map[data-view="before"] .tr,.map[data-view="after"] .tl{display:none}
+.tc .seg{background:rgba(251,248,242,.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 2px 8px rgba(30,38,32,.1)}
+.zbtn{width:34px;height:34px;border-radius:10px;border:1px solid var(--line);background:rgba(251,248,242,.95);display:grid;place-items:center;
+  cursor:pointer;box-shadow:0 2px 8px rgba(30,38,32,.1);font-size:17px;font-weight:600;color:var(--ink-2)}
+.zbtn:hover{background:#fff;color:var(--ink)}
+.zbtn:focus-visible{border-radius:10px}
+.scalebar{display:flex;flex-direction:column;gap:3px}
+.scalebar i{display:block;height:6px;border:2px solid var(--ink);border-top:0;background:rgba(251,248,242,.6)}
+.scalebar span{font-family:var(--mono);font-size:10.5px;font-weight:600;text-shadow:0 0 3px #fff,0 0 3px #fff}
+.coords{font-family:var(--mono);font-size:11px}
+.hint{font-size:10.5px;color:var(--muted);font-weight:500}
+.banner{position:absolute;z-index:5;top:54px;left:50%;transform:translateX(-50%);max-width:min(560px, calc(100% - 20px));
+  background:var(--fa);color:#fff;border-radius:10px;padding:9px 13px;font-size:12px;line-height:1.45;box-shadow:0 8px 24px rgba(60,30,60,.25);display:none}
+.map.naive .banner{display:block}
+.tip{position:absolute;z-index:7;pointer-events:none;background:var(--ink);color:var(--card);font-size:11.5px;padding:6px 9px;border-radius:7px;
+  white-space:nowrap;opacity:0;transform:translate(12px,12px);transition:opacity .1s}
+.tip.on{opacity:1}
+.tip b{font-family:var(--mono);font-weight:600}
 
-    /* Realistic Earth Sphere */
-    .earth-sphere {{
-      width: 100%;
-      height: 100%;
-      border-radius: 50%;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 
-        0 24px 50px -12px rgba(15, 23, 42, 0.28),
-        0 0 0 1px rgba(15, 23, 42, 0.08),
-        inset -25px -25px 60px rgba(0, 0, 0, 0.45),
-        inset 15px 15px 35px rgba(255, 255, 255, 0.35);
-      background-color: #0b2545;
-      cursor: pointer;
-      transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-    }}
-    .earth-sphere:hover {{
-      transform: scale(1.02);
-    }}
+/* inspector */
+.ins-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ins-id{font-family:var(--mono);font-size:20px;font-weight:600;letter-spacing:-.02em;margin:2px 0 8px}
+.eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.stepper{display:flex;gap:4px;align-items:center}
+.stepper span{font-family:var(--mono);font-size:11px;color:var(--muted);margin-right:4px}
+.ibtn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--card-2);display:grid;place-items:center;cursor:pointer;color:var(--ink-2)}
+.ibtn:hover{background:#fff;color:var(--ink)}
+.ibtn:focus-visible{border-radius:9px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tag{display:inline-flex;align-items:center;gap:6px;border-radius:99px;padding:4px 10px;font-size:11.5px;font-weight:700;
+  background:color-mix(in srgb, var(--c) 14%, transparent);color:var(--c)}
+.tag.plain{--c:var(--ink-2);font-weight:600}
+.summary{margin:10px 0 4px;font-size:12.5px;line-height:1.5;color:var(--ink-2)}
+dl{margin:8px 0 0;display:grid;grid-template-columns:auto 1fr;gap:0}
+dt,dd{padding:7px 0;border-top:1px solid var(--line);font-size:12px}
+dt{color:var(--muted);padding-right:12px}
+dd{margin:0;text-align:right;font-weight:600;min-width:0}
+dd.mono{font-weight:500}
+.bar{display:inline-block;width:70px;height:6px;border-radius:3px;background:var(--line);vertical-align:middle;margin-right:8px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--c)}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.abtn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line);background:var(--card-2);
+  border-radius:10px;padding:9px 10px;font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-2)}
+.abtn:hover{background:#fff;color:var(--ink);border-color:var(--line-2)}
+.abtn:focus-visible{border-radius:10px}
+.abtn.primary{background:var(--forest);border-color:var(--forest);color:var(--btn-ink)}
+.abtn.primary:hover{background:var(--forest-h)}
+.abtn.good:hover{border-color:var(--moss);color:var(--moss)}
+.abtn.bad:hover{border-color:var(--crit);color:var(--crit)}
+.vstate{font-size:12px;color:var(--muted);margin:0}
+.vstate b{color:var(--ink)}
+.adv{background:linear-gradient(0deg, color-mix(in srgb, var(--clay) 7%, var(--card)), var(--card))}
+.adv p{margin:0;font-size:13px;line-height:1.6;color:var(--ink-2)}
+.exports{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.exports .abtn{justify-content:flex-start}
+.exports .abtn small{margin-left:auto;font-family:var(--mono);font-weight:500;color:var(--faint);font-size:10.5px}
 
-    .earth-img {{
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      transition: opacity 0.4s ease;
-    }}
+/* modal + toast */
+dialog{border:0;padding:0;border-radius:18px;background:var(--card);color:var(--ink);width:min(680px, calc(100vw - 32px));
+  box-shadow:0 40px 100px rgba(30,38,32,.35)}
+dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px)}
+.dlg{padding:22px 24px 24px}
+.dlg h2{margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em}
+.dlg p{font-size:13px;line-height:1.55;color:var(--ink-2)}
+.dlg table{font-size:13px;margin:6px 0 14px}
+.dlg th{background:none;padding:8px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.dlg td{padding:9px 6px}
+.dlg .win{color:var(--forest);font-weight:700}
+.dlg .lose{color:var(--crit)}
+.dlg-h{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.note{background:color-mix(in srgb, var(--moss) 10%, var(--card));border:1px solid color-mix(in srgb, var(--moss) 30%, transparent);border-radius:10px;padding:11px 13px;font-size:12.5px;line-height:1.55}
+.toast{position:fixed;left:50%;bottom:22px;z-index:20;transform:translate(-50%,20px);opacity:0;pointer-events:none;background:var(--ink);color:var(--card);
+  padding:10px 16px;border-radius:99px;font-size:12.5px;font-weight:500;box-shadow:0 12px 30px rgba(30,38,32,.3);transition:opacity .2s, transform .25s var(--e-soft)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
 
-    /* Daylight Atmospheric Ring */
-    .atmosphere-halo {{
-      position: absolute;
-      inset: -12px;
-      border-radius: 50%;
-      pointer-events: none;
-      background: radial-gradient(circle, transparent 65%, rgba(56, 189, 248, 0.25) 85%, rgba(37, 99, 235, 0.08) 100%);
-    }}
+@media (max-width:1180px){
+  .dbody{grid-template-columns:minmax(0,1fr) 320px;grid-template-areas:"center right" "left right"}
+  .left{flex-direction:row;overflow:visible} .left>.card{flex:1}
+  .center{min-height:560px}
+}
+@media (max-width:820px){
+  .dash{overflow:auto;display:block}
+  .dbody{display:flex;flex-direction:column}
+  .left{flex-direction:column}
+  .col{overflow:visible}
+  .center{min-height:0;order:-1}
+  .map{flex:none;height:64vh}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tscroll{max-height:320px}
+  .tb-sep{display:none}
+  .tb-title{flex-basis:100%;order:3}
+  .hint{display:none}
+  .tl .mono,.tr .mono{display:none}
+}
+</style>
 
-    /* Target Location Pins on Globe */
-    .globe-pin {{
-      position: absolute;
-      transform: translate(-50%, -50%);
-      z-index: 10;
-      cursor: pointer;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      transition: all 0.25s ease;
-    }}
-    .globe-pin-dot {{
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
-      background: #dc2626;
-      border: 3px solid #ffffff;
-      box-shadow: 0 0 12px rgba(220, 38, 38, 0.8);
-      animation: pinPulse 1.6s infinite;
-    }}
-    @keyframes pinPulse {{
-      0%, 100% {{ transform: scale(1); }}
-      50% {{ transform: scale(1.3); }}
-    }}
-    .globe-pin-label {{
-      margin-top: 4px;
-      background: #ffffff;
-      color: #0f172a;
-      padding: 3px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      font-weight: 700;
-      white-space: nowrap;
-      box-shadow: var(--shadow-md);
-      border: 1px solid var(--border-subtle);
-    }}
-
-    /* Mumbai Pin (Coords on India globe) */
-    .pin-mumbai {{
-      top: 44%;
-      left: 63%;
-    }}
-
-    /* Texas Pin (Coords on Americas globe) */
-    .pin-texas {{
-      top: 52%;
-      left: 47%;
-    }}
-
-    /* Sector Selection Cards (Light Mode) */
-    .sector-grid {{
-      margin-top: 36px;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      width: min(100%, 780px);
-    }}
-    @media (max-width: 680px) {{
-      .sector-grid {{ grid-template-columns: 1fr; }}
-    }}
-
-    .sector-card {{
-      background: #ffffff;
-      border: 2px solid var(--border-subtle);
-      border-radius: 16px;
-      padding: 22px;
-      text-align: left;
-      cursor: pointer;
-      box-shadow: var(--shadow-sm);
-      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-      display: flex;
-      flex-direction: column;
-    }}
-    .sector-card:hover {{
-      border-color: #93c5fd;
-      transform: translateY(-2px);
-      box-shadow: var(--shadow-lg);
-    }}
-    .sector-card.is-active {{
-      border-color: var(--primary);
-      background: #f8faff;
-      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15), var(--shadow-md);
-    }}
-
-    .sector-card-head {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
-    }}
-    .sector-card-tag {{
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11.5px;
-      font-weight: 700;
-      color: var(--primary);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }}
-    .sector-sensor-badge {{
-      background: var(--bg-surface-subtle);
-      border: 1px solid var(--border-subtle);
-      padding: 2px 8px;
-      border-radius: 6px;
-      font-size: 11px;
-      color: var(--text-sub);
-    }}
-    .sector-card-title {{
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-main);
-      margin-bottom: 6px;
-    }}
-    .sector-card-desc {{
-      font-size: 13px;
-      color: var(--text-muted);
-      line-height: 1.5;
-      margin-bottom: 14px;
-    }}
-    .sector-card-footer {{
-      margin-top: auto;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding-top: 12px;
-      border-top: 1px solid var(--border-subtle);
-    }}
-    .sector-card-stat {{
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--emerald);
-    }}
-    .btn-card-explore {{
-      font-size: 12.5px;
-      font-weight: 700;
-      color: var(--primary);
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }}
-
-    /* ============================================================
-       3. STAGE 2: TACTICAL MISSION CONTROL HUD (Light Mode)
-       ============================================================ */
-    .dashboard-stage {{
-      display: none;
-      padding: 20px 28px 40px;
-      max-width: 1560px;
-      margin: 0 auto;
-      flex-direction: column;
-      gap: 18px;
-    }}
-    .dashboard-stage.is-active {{
-      display: flex;
-    }}
-
-    /* Dashboard Header Bar */
-    .dash-header {{
-      background: #ffffff;
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      padding: 14px 20px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      box-shadow: var(--shadow-sm);
-    }}
-    @media (max-width: 900px) {{
-      .dash-header {{ flex-wrap: wrap; }}
-    }}
-
-    .btn-back-globe {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      border-radius: 8px;
-      background: var(--bg-surface-subtle);
-      border: 1px solid var(--border-medium);
-      color: var(--text-main);
-      font-size: 12.5px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }}
-    .btn-back-globe:hover {{
-      background: #e2e8f0;
-    }}
-
-    .dash-sector-info {{
-      display: flex;
-      flex-direction: column;
-    }}
-    .dash-sector-name {{
-      font-size: 15px;
-      font-weight: 700;
-      color: var(--text-main);
-    }}
-    .dash-sector-coords {{
-      font-size: 11.5px;
-      color: var(--text-sub);
-    }}
-
-    /* Segmented Controls (Theater, Engine, Language) */
-    .segmented-control {{
-      display: flex;
-      background: var(--bg-surface-subtle);
-      border: 1px solid var(--border-subtle);
-      border-radius: 8px;
-      padding: 3px;
-      gap: 2px;
-    }}
-    .segment-btn {{
-      border: 0;
-      background: transparent;
-      padding: 5px 12px;
-      border-radius: 6px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--text-muted);
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }}
-    .segment-btn:hover {{
-      color: var(--text-main);
-    }}
-    .segment-btn.is-active {{
-      background: #ffffff;
-      color: var(--primary);
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-    }}
-    .segment-btn.is-naive.is-active {{
-      color: var(--sev-critical);
-    }}
-
-    /* Executive KPI Metric Row */
-    .kpi-row {{
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-    }}
-    @media (max-width: 900px) {{
-      .kpi-row {{ grid-template-columns: 1fr 1fr; }}
-    }}
-    @media (max-width: 520px) {{
-      .kpi-row {{ grid-template-columns: 1fr; }}
-    }}
-
-    .kpi-box {{
-      background: #ffffff;
-      border: 1px solid var(--border-subtle);
-      border-radius: 12px;
-      padding: 16px 20px;
-      box-shadow: var(--shadow-sm);
-      display: flex;
-      flex-direction: column;
-    }}
-    .kpi-box-title {{
-      font-size: 11.5px;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--text-sub);
-    }}
-    .kpi-box-value {{
-      font-size: 26px;
-      font-weight: 800;
-      color: var(--text-main);
-      margin-top: 4px;
-      display: flex;
-      align-items: baseline;
-      gap: 4px;
-    }}
-    .kpi-box-sub {{
-      font-size: 12px;
-      font-weight: 600;
-      margin-top: 2px;
-    }}
-
-    /* Main Operational Work Area */
-    .dash-main-grid {{
-      display: grid;
-      grid-template-columns: 1fr 380px;
-      gap: 18px;
-      min-height: 600px;
-    }}
-    @media (max-width: 1040px) {{
-      .dash-main-grid {{ grid-template-columns: 1fr; }}
-    }}
-
-    /* ============================================================
-       4. BI-TEMPORAL SPLIT CURTAIN SWIPE MAP (Pixel-Perfect Alignment)
-       ============================================================ */
-    .map-frame {{
-      background: #ffffff;
-      border: 1px solid var(--border-subtle);
-      border-radius: 16px;
-      box-shadow: var(--shadow-md);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-    }}
-
-    .map-toolbar {{
-      height: 48px;
-      padding: 0 16px;
-      background: #ffffff;
-      border-bottom: 1px solid var(--border-subtle);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      z-index: 20;
-    }}
-    .map-tag {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12px;
-      font-weight: 600;
-    }}
-
-    .view-zoom-pills {{
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      background: var(--bg-surface-subtle);
-      padding: 2px 6px;
-      border-radius: 6px;
-      border: 1px solid var(--border-subtle);
-    }}
-    .pill-zoom-btn {{
-      background: transparent;
-      border: 0;
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--text-sub);
-      cursor: pointer;
-      padding: 3px 8px;
-      border-radius: 4px;
-    }}
-    .pill-zoom-btn.is-active {{
-      background: #ffffff;
-      color: var(--primary);
-      box-shadow: var(--shadow-sm);
-    }}
-
-    /* Canvas Stage Area (Clean light GIS workspace) */
-    .map-stage-area {{
-      flex: 1;
-      position: relative;
-      background: #f1f5f9;
-      background-image: 
-        linear-gradient(rgba(203, 213, 225, 0.4) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(203, 213, 225, 0.4) 1px, transparent 1px);
-      background-size: 24px 24px;
-      overflow: hidden;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 16px;
-      user-select: none;
-    }}
-
-    /* Aspect Ratio Box: Matches satellite imagery dimensions exactly */
-    .map-canvas-container {{
-      position: relative;
-      height: 100%;
-      max-height: 640px;
-      aspect-ratio: 557 / 858; /* Mumbai default */
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0,0,0,0.1);
-      border-radius: 8px;
-      overflow: hidden;
-      background: #000;
-      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }}
-
-    .sat-img-base {{
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-      pointer-events: none;
-    }}
-
-    /* Post Image Reveal with CSS Clip Path */
-    .sat-post-revealer {{
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      clip-path: inset(0 0 0 50%);
-      will-change: clip-path;
-      pointer-events: none;
-    }}
-
-    /* Vector SVG Overlay Layer: Locked 1:1 on Imagery */
-    .map-svg-overlay {{
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      z-index: 15;
-      pointer-events: auto;
-    }}
-
-    .vector-polygon {{
-      cursor: pointer;
-      stroke-width: 2px;
-      vector-effect: non-scaling-stroke;
-      transition: fill-opacity 0.15s ease, stroke-width 0.15s ease;
-    }}
-    .vector-polygon:hover {{
-      fill-opacity: 0.75 !important;
-      stroke-width: 3.5px !important;
-    }}
-    .vector-polygon.is-active {{
-      stroke: #ffffff !important;
-      stroke-width: 4px !important;
-      fill-opacity: 0.85 !important;
-      filter: drop-shadow(0 0 8px rgba(0,0,0,0.8));
-    }}
-
-    /* Draggable Curtain Handle */
-    .curtain-bar {{
-      position: absolute;
-      top: 0;
-      bottom: 0;
-      left: 50%;
-      width: 3px;
-      background: #ffffff;
-      transform: translateX(-50%);
-      cursor: ew-resize;
-      z-index: 25;
-      box-shadow: 0 0 10px rgba(0, 0, 0, 0.6);
-    }}
-    .curtain-pill {{
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 36px;
-      height: 36px;
-      border-radius: 50%;
-      background: #ffffff;
-      border: 1px solid var(--border-medium);
-      color: #0f172a;
-      box-shadow: var(--shadow-lg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: 800;
-      cursor: ew-resize;
-    }}
-
-    /* Naive Baseline Alert Banner */
-    .naive-warning-box {{
-      position: absolute;
-      bottom: 16px;
-      left: 16px;
-      right: 16px;
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      border-radius: 10px;
-      padding: 12px 16px;
-      display: none;
-      align-items: center;
-      gap: 12px;
-      color: #991b1b;
-      font-size: 13px;
-      z-index: 30;
-      box-shadow: var(--shadow-md);
-    }}
-    .naive-warning-box.is-active {{
-      display: flex;
-    }}
-
-    /* ============================================================
-       5. RIGHT SIDEBAR: INSPECTOR & CITIZEN VERNACULAR PORTAL
-       ============================================================ */
-    .dash-sidebar {{
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }}
-
-    .card {{
-      background: #ffffff;
-      border: 1px solid var(--border-subtle);
-      border-radius: 14px;
-      padding: 18px;
-      box-shadow: var(--shadow-sm);
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }}
-
-    .card-title {{
-      font-size: 12px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: var(--text-sub);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }}
-
-    .prop-row {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      font-size: 13px;
-      padding: 4px 0;
-      border-bottom: 1px solid #f8fafc;
-    }}
-    .prop-label {{
-      color: var(--text-sub);
-    }}
-    .prop-val {{
-      font-weight: 600;
-      color: var(--text-main);
-    }}
-
-    .badge-severity {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 3px 10px;
-      border-radius: 99px;
-      font-size: 11.5px;
-      font-weight: 700;
-    }}
-
-    /* Citizen Vernacular Safety Advisory Card */
-    .card-advisory {{
-      background: #eff6ff;
-      border: 1px solid #bfdbfe;
-    }}
-    .advisory-header {{
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 12.5px;
-      font-weight: 700;
-      color: #1e40af;
-    }}
-    .advisory-body {{
-      font-size: 13px;
-      line-height: 1.5;
-      color: #1e3a8a;
-    }}
-
-    /* Ground-Truth Verification Widget */
-    .verify-actions {{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-      margin-top: 6px;
-    }}
-    .btn-verify-confirm {{
-      background: #ecfdf5;
-      border: 1px solid #a7f3d0;
-      color: #065f46;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 8px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-    }}
-    .btn-verify-confirm:hover {{
-      background: #d1fae5;
-    }}
-    .btn-verify-flag {{
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #991b1b;
-      font-size: 12px;
-      font-weight: 600;
-      padding: 8px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-    }}
-    .btn-verify-flag:hover {{
-      background: #fee2e2;
-    }}
-
-    /* 1-Click Export Grid */
-    .export-grid {{
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }}
-    .btn-download-action {{
-      background: #ffffff;
-      border: 1px solid var(--border-medium);
-      color: var(--text-main);
-      padding: 8px 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-    }}
-    .btn-download-action:hover {{
-      background: var(--bg-surface-subtle);
-      border-color: #94a3b8;
-      transform: translateY(-1px);
-    }}
-
-    /* Toast Notification */
-    .toast {{
-      position: fixed;
-      bottom: 24px;
-      right: 24px;
-      background: #0f172a;
-      color: #ffffff;
-      padding: 12px 18px;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 500;
-      box-shadow: var(--shadow-xl);
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transform: translateY(100px);
-      opacity: 0;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 100;
-      pointer-events: none;
-    }}
-    .toast.is-show {{
-      transform: translateY(0);
-      opacity: 1;
-      pointer-events: auto;
-    }}
-
-    /* Benchmark Modal */
-    .modal-overlay {{
-      position: fixed;
-      inset: 0;
-      background: rgba(15, 23, 42, 0.45);
-      backdrop-filter: blur(4px);
-      z-index: 120;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }}
-    .modal-overlay.is-open {{
-      display: flex;
-    }}
-    .modal-dialog {{
-      background: #ffffff;
-      border-radius: 16px;
-      width: min(100%, 640px);
-      padding: 28px;
-      box-shadow: var(--shadow-xl);
-      border: 1px solid var(--border-subtle);
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }}
-    .modal-header {{
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }}
-    .modal-title {{
-      font-size: 18px;
-      font-weight: 700;
-      color: var(--text-main);
-    }}
-    .modal-close {{
-      background: transparent;
-      border: 0;
-      font-size: 22px;
-      cursor: pointer;
-      color: var(--text-sub);
-    }}
-    .table-bench {{
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-      margin-top: 8px;
-    }}
-    .table-bench th, .table-bench td {{
-      padding: 10px 12px;
-      text-align: left;
-      border-bottom: 1px solid var(--border-subtle);
-    }}
-    .table-bench th {{
-      background: var(--bg-surface-subtle);
-      color: var(--text-sub);
-      font-weight: 600;
-      font-size: 11.5px;
-      text-transform: uppercase;
-    }}
-  </style>
+<script>
+/* A) entrance — arms synchronously */
+(function(){
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var d=document.documentElement, done=false, cleaned=false, bootT, safeT;
+  d.classList.add('anim');
+  function clean(){ if(cleaned) return; cleaned=true; clearTimeout(safeT); document.removeEventListener('animationend', onEnd, true); d.classList.remove('anim','go'); }
+  function onEnd(e){ if(e.animationName==='pillIn' && e.target.classList.contains('btn-ghost')) clean(); }
+  function start(){ if(done) return; done=true; clearTimeout(bootT); document.addEventListener('animationend', onEnd, true); safeT=setTimeout(clean, 2600); d.classList.add('go'); }
+  function boot(){ bootT=setTimeout(start, 900); if(document.fonts && document.fonts.ready) document.fonts.ready.then(start, start); else start(); }
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded', boot); else boot();
+})();
+</script>
 </head>
 
-<body class="bg-carto-grid">
-  <!-- Top Navigation Header -->
-  <header class="navbar">
-    <div class="nav-brand" onclick="showStage('hero')">
-      <div class="nav-logo-icon">CI</div>
-      <div class="nav-logo-text">Change<span>Intel</span></div>
-    </div>
+<body>
+<canvas id="globe" aria-hidden="true"></canvas>
+<img id="flyTile" alt="" aria-hidden="true">
+<div id="flyLabel" aria-hidden="true"></div>
 
-    <div class="nav-status-pill">
-      <div class="nav-status-dot"></div>
-      <span>SENTINEL-2 & LEVIR ONLINE • 10M GSD</span>
-    </div>
-
+<!-- ======================= LANDING ======================= -->
+<main class="hero" id="hero">
+  <header class="nav">
+    <a class="logo" href="#" data-act="noop">Change<b>Intel</b></a>
+    <nav class="nav-links" aria-label="Primary" id="navLinks"></nav>
     <div class="nav-actions">
-      <button class="btn btn-secondary" onclick="openBenchmarkModal()">
-        LEVIR Benchmark (86.4% F1)
-      </button>
-      <button class="btn btn-primary" onclick="launchSector('mumbai')">
-        Explore Mumbai Sector &rarr;
+      <button class="btn btn-login" data-act="bench" id="navF1"></button>
+      <button class="btn btn-nav-start" data-act="fly:first">Open console
+        <svg class="arw" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M0.8 5h10M7.1 1.4 10.9 5l-3.8 3.6" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
+    <button class="burger" id="burger" aria-label="Open menu" aria-expanded="false" aria-controls="menu"><span></span></button>
+  </header>
+  <nav class="menu" id="menu" aria-label="Mobile">
+    <div id="menuLinks" style="display:contents"></div>
+    <div class="divider"></div>
+    <a class="m-start" data-act="fly:first">Open console
+      <svg class="arw" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M0.8 5h10M7.1 1.4 10.9 5l-3.8 3.6" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </a>
+  </nav>
+
+  <div class="hero-inner">
+    <h1><span class="ln"><span class="ln-i">Change, mapped</span></span><span class="ln"><span class="ln-i">from orbit</span></span></h1>
+    <p class="sub">Two satellite passes in, GIS-ready change polygons out. <br>False alarms filtered, area measured in square metres, <br>severity scored and alert drafts ready for the district cell.</p>
+    <div class="ctas" id="ctas"></div>
+    <div class="meta" id="heroMeta"></div>
+  </div>
+</main>
+
+<!-- ======================= DASHBOARD ======================= -->
+<div class="dash" id="dash" aria-label="Change intelligence console">
+  <header class="topbar">
+    <button class="tb-brand" data-act="back" title="Back to globe">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.7 3.9 5.9 3.9 9.5s-1.3 6.8-3.9 9.5c-2.6-2.7-3.9-5.9-3.9-9.5S9.4 5.2 12 2.5z"/></svg>
+      <strong>Change<b>Intel</b></strong>
+    </button>
+    <span class="tb-sep"></span>
+    <div class="tb-title"><div id="tbTitle"></div><div id="tbCoords"></div></div>
+    <div class="seg" role="group" aria-label="Sector" id="sectorSeg"></div>
+    <div class="seg" role="group" aria-label="Detection engine">
+      <button data-act="mode:ai">ChangeIntel AI</button><button data-act="mode:naive">Naive NDVI</button>
+    </div>
+    <button class="pill" data-act="bench">Benchmark</button>
   </header>
 
-  <!-- ============================================================
-       STAGE 1: REAL EARTH ORBITAL STAGE (Clean Light Mode)
-       ============================================================ */
-  -->
-  <main class="hero-stage" id="stageHero">
-    <div class="hero-eyebrow mono">
-      GEOAI 04 • BI-TEMPORAL EARTH OBSERVATION INTELLIGENCE
-    </div>
-
-    <h1 class="hero-title">
-      Autonomous Satellite <span>Change Intelligence</span> & Risk Triage
-    </h1>
-
-    <p class="hero-subtitle">
-      Deep-learning bi-temporal surveillance for rapid disaster triage and urban encroachment detection. Radiometrically normalized to reject sun-angle and haze false alarms.
-    </p>
-
-    <!-- Photorealistic Real Earth Globe -->
-    <div class="globe-stage-wrapper">
-      <div class="atmosphere-halo"></div>
-      
-      <div class="earth-sphere" id="earthSphere" onclick="launchSector(currentSelectedSector)">
-        <img class="earth-img" id="earthImg" src="" alt="Photorealistic Earth Satellite View">
-
-        <!-- Mumbai Pin (India View) -->
-        <div class="globe-pin pin-mumbai" id="pinMumbai" onclick="event.stopPropagation(); launchSector('mumbai')">
-          <div class="globe-pin-dot"></div>
-          <div class="globe-pin-label">📍 Mumbai Corridor</div>
+  <div class="dbody">
+    <aside class="col left">
+      <section class="card rise" style="--d:1">
+        <h3>Layers</h3>
+        <div class="legend" id="legend"></div>
+        <label class="slider">Fill <input type="range" id="fill" min="0" max="80" value="35" aria-label="Polygon fill opacity"></label>
+      </section>
+      <section class="card tcard rise" style="--d:2">
+        <div class="card-h"><span>Detections</span><span class="mono" id="tCount"></span></div>
+        <input class="search" id="search" type="search" placeholder="Filter by ID or change type" aria-label="Filter detections">
+        <div class="tscroll">
+          <table>
+            <thead><tr>
+              <th><button data-sort="id">ID</button></th>
+              <th><button data-sort="tier">Type</button></th>
+              <th class="num"><button data-sort="area">Area m²</button></th>
+            </tr></thead>
+            <tbody id="tbody"></tbody>
+          </table>
         </div>
+      </section>
+    </aside>
 
-        <!-- Texas Pin (Americas View) -->
-        <div class="globe-pin pin-texas" id="pinTexas" style="display:none;" onclick="event.stopPropagation(); launchSector('levir')">
-          <div class="globe-pin-dot"></div>
-          <div class="globe-pin-label">📍 Texas Sector</div>
+    <section class="center">
+      <div class="kpis" id="kpis"></div>
+      <div class="map" id="map" data-view="swipe">
+        <div class="layer" id="layT1"><div class="world"><img id="imgT1" alt="Before imagery" draggable="false"></div></div>
+        <div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
+        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
+        <div class="curtain" id="curtain"><div class="knob ctl" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
+        <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
+        <div class="ctl tr"><span class="chip">After<span class="mono" id="d2"></span></span></div>
+        <div class="ctl tc"><div class="seg" role="group" aria-label="Imagery view">
+          <button data-act="view:before">Before</button><button data-act="view:swipe">Swipe</button><button data-act="view:after">After</button>
+        </div></div>
+        <div class="banner" id="banner"></div>
+        <div class="ctl bl">
+          <div class="scalebar"><i id="sbBar"></i><span id="sbTxt"></span></div>
+          <span class="chip coords" id="coords">Hover for coordinates</span>
+          <span class="hint">Scroll to zoom · drag to pan · ←/→ cycle · F fit</span>
         </div>
-      </div>
-    </div>
-
-    <!-- Target Theater Selection Cards -->
-    <div class="sector-grid">
-      <!-- Card 1: Mumbai -->
-      <div class="sector-card is-active" id="cardMumbai" onclick="selectSector('mumbai')">
-        <div class="sector-card-head">
-          <span class="sector-card-tag mono">📍 Western Ghats Corridor</span>
-          <span class="sector-sensor-badge mono">Sentinel-2 10m MSI</span>
+        <div class="ctl br">
+          <button class="zbtn" data-act="zoom:in" aria-label="Zoom in">+</button>
+          <button class="zbtn" data-act="zoom:out" aria-label="Zoom out">−</button>
+          <button class="zbtn" data-act="zoom:fit" aria-label="Fit to tile">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
         </div>
-        <div class="sector-card-title">Mumbai Coastal & Mithi Basin</div>
-        <div class="sector-card-desc">
-          Multispectral bitemporal analysis. Critical flood inundation and illegal wetland buffer encroachment detection.
-        </div>
-        <div class="sector-card-footer">
-          <span class="sector-card-stat mono">● 72,996 m² Changed • 1 P1 Triage</span>
-          <span class="btn-card-explore" onclick="event.stopPropagation(); launchSector('mumbai')">Open Sector &rarr;</span>
-        </div>
+        <div class="tip" id="tip"></div>
       </div>
+    </section>
 
-      <!-- Card 2: Texas -->
-      <div class="sector-card" id="cardLevir" onclick="selectSector('levir')">
-        <div class="sector-card-head">
-          <span class="sector-card-tag mono">📍 North America Sector</span>
-          <span class="sector-sensor-badge mono">Aerial 0.5m Ortho</span>
-        </div>
-        <div class="sector-card-title">Texas Urban Benchmark (LEVIR)</div>
-        <div class="sector-card-desc">
-          High-resolution building and infrastructure change detection powered by fine-tuned Bitemporal Transformer (BIT).
-        </div>
-        <div class="sector-card-footer">
-          <span class="sector-card-stat mono">● 17 Structural Polygons • 94.7% BIT</span>
-          <span class="btn-card-explore" onclick="event.stopPropagation(); launchSector('levir')">Open Sector &rarr;</span>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- ============================================================
-       STAGE 2: TACTICAL MISSION CONTROL HUD (Clean Light Mode)
-       ============================================================ */
-  -->
-  <main class="dashboard-stage" id="stageDashboard">
-    <!-- Top HUD Navigation -->
-    <div class="dash-header">
-      <button class="btn-back-globe" onclick="showStage('hero')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        &larr; Back to Earth Globe
-      </button>
-
-      <div class="dash-sector-info">
-        <div class="dash-sector-name" id="dashSectorTitle">Mumbai Coastal Corridor • Sentinel-2 MSI</div>
-        <div class="dash-sector-coords mono" id="dashSectorCoords">19.0256° N - 19.1052° N, 72.9016° E - 72.9533° E • EPSG:32643 UTM</div>
-      </div>
-
-      <!-- Theater Switcher -->
-      <div class="segmented-control" style="margin-left:auto;">
-        <button class="segment-btn is-active" id="segMumbai" onclick="switchTheater('mumbai')">Mumbai</button>
-        <button class="segment-btn" id="segLevir" onclick="switchTheater('levir')">Texas (LEVIR)</button>
-      </div>
-
-      <!-- Engine Mode Toggle (AI vs Naive Baseline) -->
-      <div class="segmented-control">
-        <button class="segment-btn is-active" id="segAi" onclick="setEngineMode('ai')">ChangeIntel AI</button>
-        <button class="segment-btn" id="segNaive" onclick="setEngineMode('naive')">Naive NDVI Baseline</button>
-      </div>
-
-      <!-- Vernacular Language Toggle -->
-      <div class="segmented-control">
-        <button class="segment-btn is-active" id="langEn" onclick="setLanguage('en')">EN</button>
-        <button class="segment-btn" id="langMr" onclick="setLanguage('mr')">मराठी</button>
-        <button class="segment-btn" id="langHi" onclick="setLanguage('hi')">हिंदी</button>
-      </div>
-    </div>
-
-    <!-- Executive KPI Row -->
-    <div class="kpi-row">
-      <div class="kpi-box">
-        <span class="kpi-box-title">Total Impact Area</span>
-        <span class="kpi-box-value"><span id="kpiArea">72,996</span> <span style="font-size:14px;color:var(--text-sub);font-weight:600">m²</span></span>
-        <span class="kpi-box-sub" style="color:var(--primary)">UTM Metric Calculated</span>
-      </div>
-      <div class="kpi-box">
-        <span class="kpi-box-title">Critical Triage Sites</span>
-        <span class="kpi-box-value" style="color:var(--sev-critical)" id="kpiCritical">1 Site</span>
-        <span class="kpi-box-sub" style="color:var(--sev-critical)">Priority 1 Field Action</span>
-      </div>
-      <div class="kpi-box">
-        <span class="kpi-box-title">False Alarm Rejection</span>
-        <span class="kpi-box-value" style="color:var(--emerald)">-91.6%</span>
-        <span class="kpi-box-sub" style="color:var(--emerald)">vs Naive NDVI Drift</span>
-      </div>
-      <div class="kpi-box">
-        <span class="kpi-box-title">Model F1-Score</span>
-        <span class="kpi-box-value" style="color:var(--primary)">86.4%</span>
-        <span class="kpi-box-sub" style="color:var(--primary)">LEVIR Official Benchmark</span>
-      </div>
-    </div>
-
-    <!-- Main Workspace Split Grid -->
-    <div class="dash-main-grid">
-      <!-- Split-Screen Curtain Swipe Viewer -->
-      <div class="map-frame">
-        <div class="map-toolbar">
-          <div class="map-tag mono">
-            <span style="color:var(--primary)">● PRE (T1):</span> <span id="labelDateT1">2015-11-20</span>
-          </div>
-          
-          <div class="view-zoom-pills" id="zoomControls">
-            <button class="pill-zoom-btn is-active" id="btnZoomFull" onclick="setZoomMode('full')">Full Tile</button>
-            <button class="pill-zoom-btn" id="btnZoomFocus" onclick="setZoomMode('focus')">🔍 Focus Disaster Area</button>
-          </div>
-
-          <div class="map-tag mono">
-            <span style="color:var(--sev-high)">● POST (T2):</span> <span id="labelDateT2">2017-04-12</span>
+    <aside class="col right">
+      <section class="card rise" style="--d:2">
+        <div class="ins-top">
+          <div><div class="eyebrow">Selected change</div><div class="ins-id" id="iId"></div></div>
+          <div class="stepper"><span id="iPos"></span>
+            <button class="ibtn" data-act="sel:prev" aria-label="Previous detection"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+            <button class="ibtn" data-act="sel:next" aria-label="Next detection"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
           </div>
         </div>
-
-        <!-- Map Stage Area (Clean light GIS workspace) -->
-        <div class="map-stage-area" id="mapStageArea">
-          <div class="map-canvas-container" id="mapCanvasContainer">
-            <!-- T1 Pre Image Base -->
-            <img class="sat-img-base" id="imgLayerT1" src="" alt="Pre-Change Satellite Imagery">
-
-            <!-- T2 Post Image with Clip Path -->
-            <div class="sat-post-revealer" id="satPostRevealer">
-              <img class="sat-img-base" id="imgLayerT2" src="" alt="Post-Change Satellite Imagery">
-            </div>
-
-            <!-- SVG Vector Overlay Layer (Locked 1:1 on Imagery) -->
-            <svg class="map-svg-overlay" id="mapSvgOverlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <!-- Rendered via JS -->
-            </svg>
-
-            <!-- Draggable Curtain Handle -->
-            <div class="curtain-bar" id="curtainBar">
-              <div class="curtain-pill">◀ || ▶</div>
-            </div>
-          </div>
-
-          <!-- Naive Warning Box -->
-          <div class="naive-warning-box" id="naiveWarningBox">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            <div>
-              <strong>Naive NDVI Baseline Active:</strong> 42.9% False Alarm Rate. Sun-glint and seasonal vegetation phenology misclassified as disaster changes.
-            </div>
-          </div>
+        <div class="tags" id="iTags"></div>
+        <p class="summary" id="iSum"></p>
+        <dl id="iProps"></dl>
+        <div class="actions">
+          <button class="abtn primary" data-act="focus">Zoom to change</button>
+          <button class="abtn" data-act="copy">Copy coordinates</button>
         </div>
-      </div>
-
-      <!-- Right Sidebar: Inspector & Citizen Safety Portal -->
-      <div class="dash-sidebar">
-        <!-- Feature Inspector Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Polygon Inspector</span>
-            <span class="mono" style="color:var(--primary);font-size:13px" id="featIdBadge">CHG_0003</span>
-          </div>
-
-          <div class="prop-row">
-            <span class="prop-label">Severity Level</span>
-            <span class="badge-severity" id="featSeverityBadge" style="background:var(--sev-high-bg);color:var(--sev-high)">HIGH SEVERITY</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Surface Area (UTM)</span>
-            <span class="prop-val mono" id="featAreaVal">65,264.8 m²</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Classification</span>
-            <span class="prop-val" id="featTypeVal">Water / Flood Inundation</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Magnitude Score</span>
-            <span class="prop-val mono" id="featMagVal">0.681 (High)</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Civic Buffer Violation</span>
-            <span class="prop-val" style="color:var(--sev-critical)" id="featViolationVal">Mithi River 50m Nala Buffer</span>
-          </div>
-          <div class="prop-row">
-            <span class="prop-label">Centroid Coordinates</span>
-            <span class="prop-val mono" style="font-size:11.5px" id="featCoordsVal">19.0264° N, 72.9112° E</span>
-          </div>
+      </section>
+      <section class="card rise" style="--d:3">
+        <div class="card-h"><span>Ground truth</span><span class="mono" id="vBadge"></span></div>
+        <p class="vstate" id="vState"></p>
+        <div class="actions">
+          <button class="abtn good" data-act="verify:yes">Confirm change</button>
+          <button class="abtn bad" data-act="verify:no">Flag false alarm</button>
         </div>
-
-        <!-- Vernacular Citizen Safety Card -->
-        <div class="card card-advisory">
-          <div class="advisory-header">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span id="advisoryTitle">CIVIC SAFETY ADVISORY</span>
-          </div>
-          <div class="advisory-body" id="advisoryBody">
-            Advisory: Substantial flood inundation detected in Saki Naka / Chembur Mithi River corridor (65,264 m²). Precautionary evacuation advisory for low-lying settlements.
-          </div>
+      </section>
+      <section class="card adv rise" style="--d:4">
+        <div class="card-h"><span id="advTitle"></span>
+          <div class="seg" role="group" aria-label="Advisory language"><button data-act="lang:en">EN</button><button data-act="lang:mr">मराठी</button><button data-act="lang:hi">हिंदी</button></div>
         </div>
-
-        <!-- Ground-Truth Verification Card -->
-        <div class="card">
-          <div class="card-title">
-            <span>Ground-Truth Verification</span>
-            <span class="mono" style="font-size:11px" id="verifyStatusText">AI Detected • 2 Verified</span>
-          </div>
-          <p style="font-size:12px;color:var(--text-muted);line-height:1.4">
-            Field responder community verification for municipal audit trail.
-          </p>
-          <div class="verify-actions">
-            <button class="btn-verify-confirm" onclick="verifyAction(true)">
-              👍 Confirm Change
-            </button>
-            <button class="btn-verify-flag" onclick="verifyAction(false)">
-              🚩 Flag Discrepancy
-            </button>
-          </div>
+        <p id="advBody"></p>
+      </section>
+      <section class="card rise" style="--d:5">
+        <h3>Exports</h3>
+        <div class="exports">
+          <button class="abtn" data-act="dl:geojson">GeoJSON<small>.geojson</small></button>
+          <button class="abtn" data-act="dl:gpkg">GeoPackage<small>.gpkg</small></button>
+          <button class="abtn" data-act="dl:cap">CAP alert<small id="capId"></small></button>
+          <button class="abtn" data-act="dl:sitrep">SitRep<small>.pdf</small></button>
+          <button class="abtn" data-act="dl:csv" style="grid-column:1/-1">Filtered table<small>.csv</small></button>
         </div>
-
-        <!-- 1-Click Decision Exports -->
-        <div class="card">
-          <div class="card-title">
-            <span>Decision Exports</span>
-          </div>
-          <div class="export-grid">
-            <button class="btn-download-action" onclick="downloadGeoJson()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-              GeoJSON
-            </button>
-            <button class="btn-download-action" onclick="downloadGeoPackage()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-              GeoPackage
-            </button>
-            <button class="btn-download-action" onclick="downloadSitRep()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-              SitRep PDF
-            </button>
-            <button class="btn-download-action" onclick="downloadCapAlert()">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              CAP v1.2 XML
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </main>
-
-  <!-- Benchmark Modal -->
-  <div class="modal-overlay" id="benchmarkModal" onclick="closeBenchmarkModal(event)">
-    <div class="modal-dialog" onclick="event.stopPropagation()">
-      <div class="modal-header">
-        <h3 class="modal-title">LEVIR-CD Official Test Split Benchmark</h3>
-        <button class="modal-close" onclick="closeBenchmarkModal()">&times;</button>
-      </div>
-      <p style="font-size:13px;color:var(--text-muted);line-height:1.5">
-        Rigorous quantitative evaluation comparing our fine-tuned Bitemporal Transformer (BIT) against standard spectral baseline methods on 11 benchmark test scenes.
-      </p>
-
-      <table class="table-bench">
-        <thead>
-          <tr>
-            <th>Evaluation Metric</th>
-            <th>Naive Spectral Baseline</th>
-            <th style="color:var(--primary)">ChangeIntel AI Engine</th>
-            <th style="color:var(--emerald)">Improvement</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><strong>F1-Score</strong></td>
-            <td>28.6%</td>
-            <td style="color:var(--primary);font-weight:700">86.4%</td>
-            <td style="color:var(--emerald);font-weight:700">+201.6%</td>
-          </tr>
-          <tr>
-            <td><strong>IoU (Intersection-over-Union)</strong></td>
-            <td>16.8%</td>
-            <td style="color:var(--primary);font-weight:700">76.1%</td>
-            <td style="color:var(--emerald);font-weight:700">+354.2%</td>
-          </tr>
-          <tr>
-            <td><strong>Precision</strong></td>
-            <td>21.2%</td>
-            <td style="color:var(--primary);font-weight:700">87.2%</td>
-            <td style="color:var(--emerald);font-weight:700">+311.3%</td>
-          </tr>
-          <tr>
-            <td><strong>Recall</strong></td>
-            <td>45.1%</td>
-            <td style="color:var(--primary);font-weight:700">86.5%</td>
-            <td style="color:var(--emerald);font-weight:700">+91.8%</td>
-          </tr>
-          <tr>
-            <td><strong>False Alarm Rate</strong></td>
-            <td style="color:var(--sev-critical);font-weight:700">42.9%</td>
-            <td style="color:var(--emerald);font-weight:700">3.6%</td>
-            <td style="color:var(--emerald);font-weight:700">-91.6% (Pruned)</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;font-size:12.5px;color:#1e3a8a;line-height:1.5">
-        <strong>Judges Key Takeaway:</strong> Naive spectral difference misclassifies seasonal grass drying and sun angle variations, resulting in a 42.9% false alarm rate. ChangeIntel prunes false alarms by <strong>91.6%</strong> down to 3.6%.
-      </div>
-    </div>
+      </section>
+    </aside>
   </div>
+</div>
 
-  <!-- Toast Notification Popup -->
-  <div class="toast" id="toastBox">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
-    <span id="toastMsg">Operation successful.</span>
+<dialog id="bench" aria-labelledby="benchH">
+  <div class="dlg">
+    <div class="dlg-h"><h2 id="benchH">LEVIR-CD benchmark</h2><button class="ibtn" data-act="bench-close" aria-label="Close">✕</button></div>
+    <p id="benchP"></p>
+    <table><thead><tr><th>Metric</th><th class="num">Naive spectral</th><th class="num">ChangeIntel AI</th><th class="num">Change</th></tr></thead><tbody id="benchRows"></tbody></table>
+    <div class="note" id="benchNote"></div>
   </div>
+</dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-  <!-- Interactive JavaScript -->
-  <script>
-    // Embedded Data Stores
-    const dataset = {dataset_json_str};
-    const assets = {assets_json_str};
-    const pdfDataB64 = {pdf_b64_str};
-    const gpkgDataB64 = {gpkg_b64_str};
-    const geojsonRaw = {geojson_str};
-    const capXmlRaw = {xml_str};
+<script>
+/* ============================================================
+   DATA + CONSTANTS
+   ============================================================ */
+const D = /*__DATA__*/null;
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TIERS = ['Critical','High','Moderate','Minor'];
+const TIER_VAR = {Critical:'var(--crit)', High:'var(--high)', Moderate:'var(--mod)', Minor:'var(--minor)'};
+const tierRank = t => 3 - TIERS.indexOf(t);
+const KEYS = Object.keys(D.scenes);
+const city = k => D.scenes[k].place.split(',')[0];
+const SHORT = {'Water / Flood Inundation':'Flood / water','Vegetation Loss / Clearing':'Vegetation loss','Vegetation Regrowth':'Vegetation regrowth',
+  'New Building / Structural Encroachment':'New structure','Built-up Structural Encroachment':'Built-up change','Landcover Disturbance':'Land disturbance'};
+// Advisory = template x selected detection. Only the phrasing is hand-written.
+const TYPE_I18N = {
+  'Water / Flood Inundation':{en:'flood inundation', mr:'पूर / जलसाठा', hi:'जल भराव / बाढ़'},
+  'Vegetation Loss / Clearing':{en:'vegetation clearing', mr:'वनस्पती तोड', hi:'वनस्पति कटाई'},
+  'Vegetation Regrowth':{en:'vegetation regrowth', mr:'वनस्पती वाढ', hi:'वनस्पति वृद्धि'},
+  'New Building / Structural Encroachment':{en:'new construction / encroachment', mr:'नवीन बांधकाम / अतिक्रमण', hi:'नया निर्माण / अतिक्रमण'},
+  'Built-up Structural Encroachment':{en:'built-up encroachment', mr:'बांधकाम अतिक्रमण', hi:'निर्माण अतिक्रमण'},
+  'Landcover Disturbance':{en:'land-cover disturbance', mr:'जमिनीतील बदल', hi:'भूमि आवरण में बदलाव'},
+};
+const ADV = {
+  en:{title:'Civic advisory', body:(f, t, a, p) => `Advisory: ${t} of ${a} m² detected near ${p} (${f.id}, ${f.tier.toLowerCase()} severity). `,
+      urgent:'Residents of low-lying areas should stay alert; a field team is being dispatched.', routine:'Scheduled for municipal survey review.'},
+  mr:{title:'नागरिक सुरक्षा इशारा', body:(f, t, a, p) => `सूचना: ${p} जवळ ${a} चौ.मी. क्षेत्रात ${t} उपग्रहाद्वारे नोंदवले गेले (${f.id}). `,
+      urgent:'सखल भागातील नागरिकांनी सतर्क राहावे; पाहणी पथक रवाना होत आहे.', routine:'महापालिका सर्वेक्षणात तपासणी केली जाईल.'},
+  hi:{title:'नागरिक सुरक्षा चेतावनी', body:(f, t, a, p) => `सूचना: ${p} के पास ${a} वर्ग मीटर क्षेत्र में ${t} उपग्रह द्वारा दर्ज किया गया (${f.id})। `,
+      urgent:'निचले इलाकों के नागरिक सतर्क रहें; जाँच दल रवाना किया जा रहा है।', routine:'नगर निगम सर्वेक्षण में इसकी जाँच की जाएगी।'},
+};
+const B = D.benchmark, AI = B.changeintel_ai_engine, NV = B.naive_spectral_baseline;
+const pct = v => (v*100).toFixed(1) + '%';
+const fmt = (v, d=0) => v.toLocaleString('en-US', {maximumFractionDigits:d});
+const clamp = (v, a=0, b=1) => Math.min(b, Math.max(a, v));
+const ease = t => t<.5 ? 4*t*t*t : 1 - Math.pow(-2*t+2, 3)/2;
+const latLon = (b, x, y) => [b.n - y/100*(b.n-b.s), b.w + x/100*(b.e-b.w)];   // cursor readout only
+const fLat = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'N':'S'}`;
+const fLon = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'E':'W'}`;
 
-    // Application State
-    let currentStage = 'hero';
-    let currentSelectedSector = 'mumbai';
-    let currentActiveTheater = 'mumbai';
-    let currentEngineMode = 'ai';
-    let currentLanguage = 'en';
-    let currentZoomMode = 'full';
-    let activeFeatureIndex = 2; // Default CHG_0003
+const S = {th:KEYS[0], sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), q:'', sort:{k:'area', d:-1}, stage:'hero'};
+const sc = () => D.scenes[S.th];
+const feats = () => sc().features;
+const FA = () => sc().naive.false_alarms;
+let verify = {};
+try { verify = JSON.parse(localStorage.getItem('ci-verify') || '{}'); } catch (e) {}
 
-    // Vernacular Translations
-    const vernacularDict = {{
-      en: {{
-        title: "CIVIC SAFETY ADVISORY (NDMA / BMC)",
-        mumbai_alert: "Advisory: Substantial flood inundation detected in Saki Naka / Chembur Mithi River corridor (65,264 m²). Precautionary evacuation advisory for low-lying settlements.",
-        levir_alert: "Advisory: Rapid commercial building expansion detected in Sector 4B. Municipal construction permit verified.",
-        confirm_toast: "Ground-truth confirmation logged (+1).",
-        flag_toast: "Discrepancy registered for analyst review."
-      }},
-      mr: {{
-        title: "नागरिक सुरक्षा इशारा (BMC DDMA)",
-        mumbai_alert: "सावधान: साकीनाका आणि चेंबूर मिठी नदी पट्ट्यात जलप्रवाहाचा मोठा विस्तार (६५,२६४ चौ.मी.) उपग्रहाद्वारे नोंदवला गेला आहे. सखल भागातील नागरिकांनी सतर्क राहावे.",
-        levir_alert: "सूचना: सेक्टर ४बी मध्ये नवीन व्यावसायिक इमारतींचे बांधकाम नोंदवले गेले आहे. महापालिका परवान्याची तपासणी सुरू आहे.",
-        confirm_toast: "नागरी पडताळणी यशस्वीपणे नोंदवली गेली (+१).",
-        flag_toast: "संभाव्य खोटा इशारा विश्लेषकाकडे पाठवला गेला."
-      }},
-      hi: {{
-        title: "नागरिक सुरक्षा चेतावनी (NDMA)",
-        mumbai_alert: "सावधान: साकीनाका और चेंबूर मीठी नदी क्षेत्र में भारी जल भराव (65,264 वर्ग मीटर) उपग्रह द्वारा दर्ज किया गया है। निचले इलाकों में रहने वाले नागरिकों को सतर्क रहने की सलाह दी जाती है।",
-        levir_alert: "सूचना: सेक्टर 4बी में नए वाणिज्यिक निर्माण दर्ज किए गए हैं। नगर निगम द्वारा अनुमति का सत्यापन जारी है।",
-        confirm_toast: "जमीनी सत्यापन सफलतापूर्वक दर्ज किया गया (+1)।",
-        flag_toast: "संभावित गलत चेतावनी को समीक्षा के लिए भेजा गया।"
-      }}
-    }};
+function toast(msg){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 2600);
+}
 
-    // Toast helper
-    function triggerToast(text) {{
-      const toast = document.getElementById('toastBox');
-      const msg = document.getElementById('toastMsg');
-      msg.textContent = text;
-      toast.classList.add('is-show');
-      setTimeout(() => {{ toast.classList.remove('is-show'); }}, 3200);
-    }}
+/* ============================================================
+   GLOBE — WebGL orthographic sphere, NASA Blue Marble texture
+   ============================================================ */
+const Globe = (() => {
+  const cv = $('#globe');
+  const gl = cv.getContext('webgl', {alpha:true, premultipliedAlpha:true, antialias:false});
+  const api = {ok:!!gl, ready:false, spin:true, lon:20, ring:0, pose:null, tgt:{lat:0, lon:0}};
+  api.heroPose = lon => {
+    const W = innerWidth, H = innerHeight, R = Math.max(W*0.56, 520);
+    return {cx:W/2, cy:H*0.745 + R, R, lat:-24, lon};
+  };
+  api.show = on => { cv.style.display = on ? 'block' : 'none'; api.visible = on; };
+  if (!gl) { cv.style.display = 'none'; return api; }
+  api.visible = true;
 
-    // ============================================================
-    // STAGE NAVIGATION & SECTOR SELECTION
-    // ============================================================
-    function showStage(stage) {{
-      currentStage = stage;
-      const hero = document.getElementById('stageHero');
-      const dash = document.getElementById('stageDashboard');
+  const vs = 'attribute vec2 p;void main(){gl_Position=vec4(p,0.,1.);}';
+  const fs = `precision highp float;
+    uniform sampler2D T; uniform vec2 C; uniform float R, LON, LAT, RING, DPR; uniform vec3 TG;
+    const float PI=3.14159265;
+    void main(){
+      vec2 p=(gl_FragCoord.xy-C)/R; float r=length(p);
+      if(r>1.){ float d=(r-1.)*R/DPR; float a=.55*exp(-d/max(R/DPR*.05,1.)); gl_FragColor=vec4(vec3(.64,.79,.84)*a,a); return; }
+      float z=sqrt(1.-r*r); vec3 n=vec3(p,z);
+      float c=cos(LAT), s=sin(LAT);
+      vec3 q=vec3(n.x, n.y*c+n.z*s, -n.y*s+n.z*c);
+      float lat=asin(clamp(q.y,-1.,1.)), lon=atan(q.x,q.z)+LON;
+      vec3 col=texture2D(T, vec2(fract(lon/(2.*PI)+.5), .5-lat/PI)).rgb;
+      col=mix(col, vec3(dot(col,vec3(.3,.59,.11))), .08)*1.04;
+      col*=.62+.45*max(dot(n,normalize(vec3(-.35,.45,.82))),0.);
+      col=mix(col, vec3(.82,.89,.89), pow(1.-z,2.2)*.65);
+      float dpx=acos(clamp(dot(q,TG),-1.,1.))*R/DPR;
+      float ring=RING*clamp(smoothstep(2.2,.6,abs(dpx-15.))+smoothstep(5.,3.5,dpx),0.,1.);
+      col=mix(col, vec3(.98,.95,.88), ring);
+      float a=clamp((1.-r)*R,0.,1.);
+      gl_FragColor=vec4(col*a,a);
+    }`;
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); return s; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, vs)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { api.ok = false; cv.style.display = 'none'; return api; }
+  gl.useProgram(pr);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(pr, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {}; ['T','C','R','LON','LAT','RING','DPR','TG'].forEach(k => U[k] = gl.getUniformLocation(pr, k));
 
-      if (stage === 'hero') {{
-        dash.classList.remove('is-active');
-        hero.classList.remove('is-hidden');
-        window.scrollTo({{ top: 0, behavior: 'smooth' }});
-      }} else {{
-        hero.classList.add('is-hidden');
-        dash.classList.add('is-active');
-        window.scrollTo({{ top: 0, behavior: 'smooth' }});
-      }}
-    }}
+  const img = new Image();
+  img.onload = () => {
+    gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    api.ready = true;
+  };
+  img.src = D.earth;
 
-    function selectSector(sector) {{
-      currentSelectedSector = sector;
-      document.getElementById('cardMumbai').classList.toggle('is-active', sector === 'mumbai');
-      document.getElementById('cardLevir').classList.toggle('is-active', sector === 'levir');
+  const rad = d => d*Math.PI/180;
+  function draw(p){
+    const dpr = Math.min(devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
+    if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+    gl.viewport(0, 0, cv.width, cv.height);
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+    const dl = rad(api.tgt.lon - p.lon), tl = rad(api.tgt.lat);
+    gl.uniform1i(U.T, 0);
+    gl.uniform2f(U.C, p.cx*dpr, (H - p.cy)*dpr);
+    gl.uniform1f(U.R, p.R*dpr); gl.uniform1f(U.LON, rad(p.lon)); gl.uniform1f(U.LAT, rad(p.lat));
+    gl.uniform1f(U.RING, api.ring); gl.uniform1f(U.DPR, dpr);
+    gl.uniform3f(U.TG, Math.cos(tl)*Math.sin(dl), Math.sin(tl), Math.cos(tl)*Math.cos(dl));
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  let last = performance.now();
+  (function frame(now){
+    requestAnimationFrame(frame);
+    const dt = Math.min((now - last)/1000, .1); last = now;
+    if (!api.ready || !api.visible) return;
+    if (api.spin) { if (!REDUCED) api.lon = (api.lon + dt*3.2) % 360; api.pose = api.heroPose(api.lon); }
+    if (api.pose) draw(api.pose);
+  })(last);
+  return api;
+})();
 
-      const earthImg = document.getElementById('earthImg');
-      const pinMumbai = document.getElementById('pinMumbai');
-      const pinTexas = document.getElementById('pinTexas');
+/* ============================================================
+   CINEMATIC FLY: hero globe → sector framed → zoom into tile
+   ============================================================ */
+const FLY = {frame:1.3, gap:0.2, zoom:2.0};
+FLY.total = FLY.frame + FLY.gap + FLY.zoom;
+const lerp = (a, b, t) => a + (b - a)*t;
+function lerpPose(a, b, t){
+  const dl = ((b.lon - a.lon) % 360 + 540) % 360 - 180;
+  return {cx:lerp(a.cx,b.cx,t), cy:lerp(a.cy,b.cy,t), R:Math.exp(lerp(Math.log(a.R), Math.log(b.R), t)), lat:lerp(a.lat,b.lat,t), lon:a.lon + dl*t};
+}
+let flying = false;
 
-      if (sector === 'mumbai') {{
-        earthImg.src = assets.earth_india;
-        pinMumbai.style.display = 'flex';
-        pinTexas.style.display = 'none';
-      }} else {{
-        earthImg.src = assets.earth_americas;
-        pinMumbai.style.display = 'none';
-        pinTexas.style.display = 'flex';
-      }}
-    }}
+async function fly(th, dir){
+  if (flying) return; flying = true;
+  const hero = $('#hero'), dash = $('#dash'), tile = $('#flyTile'), label = $('#flyLabel'), cv = $('#globe');
+  $('#menu').classList.remove('open');
+  if (dir > 0) await loadTheater(th); else fitView(false);
+  const g = sc(), b = g.bounds, tgt = {lat:(b.n+b.s)/2, lon:(b.e+b.w)/2};
 
-    function launchSector(sector) {{
-      selectSector(sector);
-      currentActiveTheater = sector;
-      activeFeatureIndex = sector === 'mumbai' ? 2 : 0;
-      showStage('dashboard');
-      loadTheaterScene(sector);
-      triggerToast(`Loaded ${{sector === 'mumbai' ? 'Mumbai Corridor' : 'Texas Urban Sector'}}`);
-    }}
+  const finishIn = () => {
+    dash.classList.add('on'); S.stage = 'dash';
+    setTimeout(() => { tile.style.opacity = 0; Globe.show(false); cv.style.filter = ''; cv.style.opacity = ''; }, 460);
+    flying = false;
+  };
+  if (REDUCED || !Globe.ok) {
+    if (dir > 0) { hero.classList.add('leaving'); finishIn(); }
+    else { dash.classList.remove('on'); hero.classList.remove('leaving'); Globe.show(true); Globe.spin = true; S.stage = 'hero'; flying = false; }
+    return;
+  }
 
-    function switchTheater(theater) {{
-      currentActiveTheater = theater;
-      activeFeatureIndex = 0;
-      setZoomMode('full');
-      document.getElementById('segMumbai').classList.toggle('is-active', theater === 'mumbai');
-      document.getElementById('segLevir').classList.toggle('is-active', theater === 'levir');
-      loadTheaterScene(theater);
-    }}
+  const W = innerWidth, H = innerHeight, m = $('#map').getBoundingClientRect();
+  const wr = {x:m.left + V.x, y:m.top + V.y, w:V.iw*V.s, h:V.ih*V.s};
+  const dlat = (b.n - b.s)*Math.PI/180, aspect = V.iw/V.ih;
+  const P0 = Globe.heroPose(dir > 0 ? Globe.lon : tgt.lon);
+  const P1 = {cx:W/2, cy:H/2, R:Math.min(W, H)*0.34, lat:tgt.lat, lon:tgt.lon};
+  const P2 = {cx:wr.x + wr.w/2, cy:wr.y + wr.h/2, R:wr.h/dlat, lat:tgt.lat, lon:tgt.lon};
+  const pose = t => t <= FLY.frame + FLY.gap ? lerpPose(P0, P1, ease(clamp(t/FLY.frame)))
+                                             : lerpPose(P1, P2, ease(clamp((t - FLY.frame - FLY.gap)/FLY.zoom)));
 
-    // ============================================================
-    // THEATER SCENE LOADING & PIXEL-PERFECT VECTOR RENDERING
-    // ============================================================
-    function loadTheaterScene(theater) {{
-      const data = dataset[theater];
-      const canvasContainer = document.getElementById('mapCanvasContainer');
+  Globe.spin = false; Globe.tgt = tgt; Globe.show(true);
+  tile.src = g.images.t2;
+  label.innerHTML = `${g.place}<span>${tgt.lat.toFixed(2)}°, ${tgt.lon.toFixed(2)}°</span>`;
+  if (dir > 0) hero.classList.add('leaving'); else { dash.classList.remove('on'); S.stage = 'hero'; }
 
-      // Update Header & KPIs (using clean bullets)
-      document.getElementById('dashSectorTitle').textContent = `${{data.title}} • ${{data.sensor}}`;
-      document.getElementById('dashSectorCoords').textContent = data.coords;
-      document.getElementById('kpiArea').textContent = data.total_area_sqm.toLocaleString('en-US', {{maximumFractionDigits: 1}});
-      document.getElementById('kpiCritical').textContent = theater === 'mumbai' ? '1 Site' : '1 Site (CHG_0005)';
+  const t0 = performance.now();
+  await new Promise(done => requestAnimationFrame(function step(now){
+    const k = clamp((now - t0)/1000/FLY.total), t = (dir > 0 ? k : 1 - k)*FLY.total, p = pose(t);
+    Globe.pose = p;
+    const ring = clamp((t - .7)/.4) * (1 - clamp((t - 1.9)/.5));
+    Globe.ring = ring;
+    label.style.opacity = ring; label.style.transform = `translate(${p.cx}px, ${p.cy - 26}px) translate(-50%,-100%)`;
+    const th_ = p.R*dlat, tw = th_*aspect;
+    tile.style.width = tw + 'px'; tile.style.height = th_ + 'px';
+    tile.style.transform = `translate(${p.cx - tw/2}px, ${p.cy - th_/2}px)`;
+    tile.style.opacity = clamp((th_ - H*0.04)/(H*0.25));
+    const texel = p.R*2*Math.PI/2048;
+    cv.style.filter = texel > 2.5 ? `blur(${Math.min((texel - 2.5)/8, 4).toFixed(2)}px)` : '';
+    cv.style.opacity = 1 - 0.75*clamp((th_ - H*0.12)/(H*0.5));
+    if (dir < 0 && t < 1.1) hero.classList.remove('leaving');
+    if (k < 1) requestAnimationFrame(step); else done();
+  }));
 
-      // Adjust Canvas Aspect Ratio so image fills 100% without letterbox distortion
-      if (theater === 'mumbai') {{
-        canvasContainer.style.aspectRatio = "557 / 858";
-        document.getElementById('imgLayerT1').src = assets.mumbai_t1;
-        document.getElementById('imgLayerT2').src = assets.mumbai_t2;
-        document.getElementById('labelDateT1').textContent = "2015-11-20";
-        document.getElementById('labelDateT2').textContent = "2017-04-12";
-      }} else {{
-        canvasContainer.style.aspectRatio = "1 / 1";
-        document.getElementById('imgLayerT1').src = assets.levir_t1;
-        document.getElementById('imgLayerT2').src = assets.levir_t2;
-        document.getElementById('labelDateT1').textContent = "Pre-Build (T1)";
-        document.getElementById('labelDateT2').textContent = "Post-Build (T2)";
-      }}
+  if (dir > 0) finishIn();
+  else { tile.style.opacity = 0; Globe.ring = 0; Globe.lon = tgt.lon; Globe.spin = true; cv.style.filter = ''; cv.style.opacity = ''; flying = false; }
+}
 
-      renderVectorPolygons();
-      updateFeatureInspector();
-      updateAdvisoryText();
-    }}
+/* ============================================================
+   MAP VIEW: pan / zoom / swipe
+   ============================================================ */
+const map = $('#map'), worlds = $$('.world');
+const V = {s:1, x:0, y:0, iw:100, ih:100, fit:1};
 
-    function setZoomMode(mode) {{
-      currentZoomMode = mode;
-      document.getElementById('btnZoomFull').classList.toggle('is-active', mode === 'full');
-      document.getElementById('btnZoomFocus').classList.toggle('is-active', mode === 'focus');
-      const container = document.getElementById('mapCanvasContainer');
+function applyView(anim){
+  worlds.forEach(w => {
+    w.style.transition = anim && !REDUCED ? 'transform .6s cubic-bezier(.2,.8,.2,1)' : 'none';
+    w.style.transform = `translate(${V.x}px, ${V.y}px) scale(${V.s})`;
+  });
+  $('#vecWorld').style.setProperty('--inv', (1/V.s).toFixed(4));
+  const big = Math.max(V.iw, V.ih)*V.s/100;
+  feats().forEach((f, i) => {
+    const pin = $('#pins').children[i]; if (!pin) return;
+    pin.classList.toggle('big', f._span*big > 22);
+  });
+  // scale bar: metres per screen px
+  const b = sc().bounds, mpp = (b.n - b.s)*111320/(V.ih*V.s);
+  const target = mpp*110, pow = Math.pow(10, Math.floor(Math.log10(target)));
+  const nice = [5, 2, 1].map(k => k*pow).find(v => v <= target) || pow;
+  $('#sbBar').style.width = (nice/mpp).toFixed(1) + 'px';
+  $('#sbTxt').textContent = nice >= 1000 ? `${nice/1000} km` : `${nice} m`;
+}
+function fitView(anim){
+  const r = map.getBoundingClientRect();
+  const s = Math.min(r.width/V.iw, r.height/V.ih)*0.94;
+  V.fit = V.s = s; V.x = (r.width - V.iw*s)/2; V.y = (r.height - V.ih*s)/2;
+  applyView(anim);
+}
+function zoomAt(f, mx, my, anim){
+  const s = clamp(V.s*f, V.fit*0.6, V.fit*40), k = s/V.s;
+  V.x = mx - (mx - V.x)*k; V.y = my - (my - V.y)*k; V.s = s;
+  applyView(anim);
+}
+function flyToFeature(i){
+  const f = feats()[i]; if (!f) return;
+  const xs = f.pts.map(p => p[0]*V.iw/100), ys = f.pts.map(p => p[1]*V.ih/100);
+  const bw = Math.max(...xs) - Math.min(...xs), bh = Math.max(...ys) - Math.min(...ys);
+  const r = map.getBoundingClientRect();
+  const s = clamp(Math.min(r.width/(bw || 1), r.height/(bh || 1))*0.4, V.fit*1.5, V.fit*12);
+  const cx = (Math.max(...xs) + Math.min(...xs))/2, cy = (Math.max(...ys) + Math.min(...ys))/2;
+  V.s = s; V.x = r.width/2 - cx*s; V.y = r.height/2 - cy*s;
+  applyView(true);
+}
+function setCurtain(p){
+  p = clamp(p, 1, 99); S.curtain = p;
+  $('#curtain').style.left = p + '%';
+  $('#knob').setAttribute('aria-valuenow', Math.round(p));
+  $('#layT2').style.clipPath = S.view === 'swipe' ? `inset(0 0 0 ${p}%)` : 'none';
+}
 
-      if (mode === 'focus' && currentActiveTheater === 'mumbai') {{
-        container.style.transform = "scale(1.75) translateY(20%)";
-        triggerToast("Zoomed to Mithi River Disaster Zone");
-      }} else if (mode === 'focus' && currentActiveTheater === 'levir') {{
-        container.style.transform = "scale(1.4) translateY(10%)";
-        triggerToast("Zoomed to Building Construction Footprint");
-      }} else {{
-        container.style.transform = "none";
-      }}
-    }}
+// pointer: pan, pinch, click-select, curtain drag
+const ptrs = new Map(); let moved = false, down = null, curtainDrag = false;
+map.addEventListener('pointerdown', e => {
+  if (e.button > 0) return;
+  if (e.target.closest('#knob')) { curtainDrag = true; e.preventDefault(); return; }
+  if (e.target.closest('.ctl')) return;
+  ptrs.set(e.pointerId, {x:e.clientX, y:e.clientY}); moved = false; down = {x:e.clientX, y:e.clientY};
+  map.classList.add('grabbing');
+});
+addEventListener('pointermove', e => {
+  const r = map.getBoundingClientRect();
+  if (curtainDrag) { setCurtain((e.clientX - r.left)/r.width*100); return; }
+  if (S.stage === 'dash' && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+    const fx = (e.clientX - r.left - V.x)/(V.iw*V.s)*100, fy = (e.clientY - r.top - V.y)/(V.ih*V.s)*100;
+    $('#coords').textContent = fx >= 0 && fx <= 100 && fy >= 0 && fy <= 100
+      ? (([la, lo]) => `${fLat(la)}  ${fLon(lo)}`)(latLon(sc().bounds, fx, fy)) : 'Outside tile';
+    const tip = $('#tip');
+    if (tip.classList.contains('on')) tip.style.transform = `translate(${e.clientX - r.left + 14}px, ${e.clientY - r.top + 14}px)`;
+  }
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()], od = Math.hypot(a.x - b.x, a.y - b.y);
+    p.x = e.clientX; p.y = e.clientY;
+    const nd = Math.hypot(a.x - b.x, a.y - b.y);
+    zoomAt(nd/(od || 1), (a.x + b.x)/2 - r.left, (a.y + b.y)/2 - r.top, false); moved = true; return;
+  }
+  if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) moved = true;
+  if (moved) { V.x += e.clientX - p.x; V.y += e.clientY - p.y; applyView(false); }
+  p.x = e.clientX; p.y = e.clientY;
+});
+function endPtr(e){
+  if (curtainDrag) { curtainDrag = false; return; }
+  if (!ptrs.delete(e.pointerId)) return;
+  if (!ptrs.size) map.classList.remove('grabbing');
+  if (moved || e.type === 'pointercancel') return;
+  const hit = e.target.closest && e.target.closest('[data-i],[data-fa]');
+  if (hit && hit.dataset.i) select(+hit.dataset.i, false);
+  else if (hit) toast(faText(FA()[+hit.dataset.fa]));
+  else if (S.view === 'swipe') { const r = map.getBoundingClientRect(); setCurtain((e.clientX - r.left)/r.width*100); }
+}
+addEventListener('pointerup', endPtr); addEventListener('pointercancel', endPtr);
+map.addEventListener('wheel', e => {
+  e.preventDefault(); const r = map.getBoundingClientRect();
+  zoomAt(Math.exp(-e.deltaY*0.0018), e.clientX - r.left, e.clientY - r.top, false);
+}, {passive:false});
+$('#knob').addEventListener('keydown', e => {
+  const d = {ArrowLeft:-2, ArrowRight:2}[e.key]; if (d) { e.preventDefault(); e.stopPropagation(); setCurtain(S.curtain + d); }
+});
+map.addEventListener('pointerover', e => {
+  const el = e.target.closest('[data-i],[data-fa]'), tip = $('#tip');
+  $$('.poly.hl').forEach(p => p.classList.remove('hl'));
+  if (!el) { tip.classList.remove('on'); return; }
+  if (el.dataset.i) {
+    const f = feats()[+el.dataset.i];
+    $(`.poly[data-i="${el.dataset.i}"]`)?.classList.add('hl');
+    tip.innerHTML = `<b>${f.id}</b> · ${f.tier} · ${SHORT[f.type] || f.type} · ${fmt(f.area_sqm)} m²`;
+  } else tip.innerHTML = faText(FA()[+el.dataset.fa]).replace(/^(\S+)/, '<b>$1</b>');
+  tip.classList.add('on');
+});
+map.addEventListener('pointerleave', () => { $('#tip').classList.remove('on'); $('#coords').textContent = 'Hover for coordinates'; });
 
-    function renderVectorPolygons() {{
-      const svg = document.getElementById('mapSvgOverlay');
-      svg.innerHTML = '';
-      const theaterData = dataset[currentActiveTheater];
+/* ============================================================
+   RENDERING
+   ============================================================ */
+function rows(){
+  const q = S.q, {k, d} = S.sort;
+  return feats().map((f, i) => ({f, i}))
+    .filter(({f}) => !S.hidden.has(f.tier) && (!q || `${f.id} ${f.type} ${f.tier}`.toLowerCase().includes(q)))
+    .sort((a, b) => d*(k === 'area' ? a.f.area_sqm - b.f.area_sqm
+                     : k === 'tier' ? tierRank(a.f.tier) - tierRank(b.f.tier) || a.f.area_sqm - b.f.area_sqm
+                     : a.f.id.localeCompare(b.f.id)));
+}
+function renderHeader(){
+  const g = sc(), b = g.bounds;
+  $('#tbTitle').textContent = `${g.label} · ${g.sensor}`;
+  $('#tbCoords').textContent = `${fLat(b.n)} – ${fLat(b.s)} · ${fLon(b.w)} – ${fLon(b.e)}`;
+  [$('#d1').textContent, $('#d2').textContent] = g.dates;
+  $$('[data-act]').forEach(b => {
+    const [k, v] = b.dataset.act.split(':');
+    const key = {th:'th', mode:'mode', lang:'lang', view:'view'}[k];
+    if (key) b.setAttribute('aria-pressed', S[key] === v);
+  });
+  map.dataset.view = S.view; map.classList.toggle('naive', S.mode === 'naive');
+}
+function renderKpis(){
+  const fs = feats(), nv = sc().naive, naive = S.mode === 'naive';
+  const sum = a => a.reduce((t, f) => t + f.area_sqm, 0), area = sum(fs);
+  const crit = fs.filter(f => f.tier === 'Critical').length, high = fs.filter(f => f.tier === 'High').length;
+  const k = naive ? [
+    ['Regions flagged', fmt(nv.regions), '', `|ΔNDVI| > ${nv.threshold} · no filtering`],
+    ['Area flagged', fmt(nv.area_sqm), 'm²', `${fmt(nv.area_sqm/area || 0, 1)}× ChangeIntel area`],
+    ['False alarms', fmt(nv.false_alarms.length), '', nv.reference === 'ground truth' ? 'off ground truth' : 'unconfirmed by ChangeIntel'],
+    ['False-alarm rate', pct(NV.false_alarm_rate), '', 'naive · LEVIR-CD'],
+  ] : [
+    ['Detections', fs.length, fs.length === 1 ? 'polygon' : 'polygons', `vs ${fmt(nv.regions)} naive regions`],
+    ['Changed area', fmt(area), 'm²', `${fmt(area/10000, 2)} ha, UTM metric`],
+    ['Priority sites', crit + high, '', `${crit} critical · ${high} high`],
+    ['False-alarm rate', pct(AI.false_alarm_rate), '', `vs ${pct(NV.false_alarm_rate)} naive · LEVIR-CD`],
+  ];
+  $('#kpis').innerHTML = k.map(([l, v, u, s], i) =>
+    `<div class="kpi rise" style="--d:${i}"><div class="kpi-l">${l}</div><div class="kpi-v"${i === 3 || (naive && i === 2) ? ` style="color:${naive ? 'var(--fa)' : 'var(--forest)'}"` : ''}>${v}${u ? `<small>${u}</small>` : ''}</div><div class="kpi-s">${s}</div></div>`).join('');
+}
+function renderLegend(){
+  const fs = feats(), fa = FA();
+  let h = TIERS.map(t => {
+    const n = fs.filter(f => f.tier === t).length;
+    return `<label class="lg-row${S.hidden.has(t) ? ' off' : ''}"><input type="checkbox" data-tier="${t}"${S.hidden.has(t) ? '' : ' checked'}>
+      <span class="sw" style="--c:${TIER_VAR[t]}"></span>${t}<span class="n">${n}</span></label>`;
+  }).join('');
+  if (S.mode === 'naive') h += `<div class="lg-row fa"><span class="sw" style="--c:var(--fa);margin-left:23px"></span>Naive false alarms<span class="n">${fa.length}</span></div>`;
+  $('#legend').innerHTML = h;
+}
+function renderTable(){
+  const r = rows();
+  $('#tbody').innerHTML = r.length ? r.map(({f, i}) =>
+    `<tr data-row="${i}" aria-selected="${i === S.sel}"><td class="mono">${f.id}</td><td><span class="dot" style="--c:${TIER_VAR[f.tier]}"></span>${SHORT[f.type] || f.type}</td><td class="num mono">${fmt(f.area_sqm)}</td></tr>`).join('')
+    : `<tr><td colspan="3" class="empty">No detections match these filters.</td></tr>`;
+  $('#tCount').textContent = `${r.length} of ${feats().length}`;
+  $$('th button').forEach(b => b.textContent = b.textContent.replace(/ [↑↓]$/, '') + (b.dataset.sort === S.sort.k ? (S.sort.d < 0 ? ' ↓' : ' ↑') : ''));
+}
+const pts = a => a.map(p => p.join(',')).join(' ');
+function renderNaive(){
+  $('#faL').innerHTML = S.mode === 'naive' ? FA().map((fa, i) => `<polygon class="fa" data-fa="${i}" points="${pts(fa.pts)}"/>`).join('') : '';
+}
+function faText(fa){
+  const nv = sc().naive;
+  return `${fa.id} · ${SHORT[fa.type] || fa.type} · ${fmt(fa.area_sqm)} m² · ${Math.round(fa.overlap*100)}% on ${nv.reference}`;
+}
+function renderMap(){
+  let h = '';
+  feats().forEach((f, i) => {
+    if (S.hidden.has(f.tier)) return;
+    if (i === S.sel) h += `<polygon class="halo" points="${pts(f.pts)}"/>`;
+    h += `<polygon class="poly${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]}" points="${pts(f.pts)}"/>`;
+  });
+  $('#ftL').innerHTML = h;
+  $('#pins').innerHTML = feats().map((f, i) =>
+    `<span class="pin${i === S.sel ? ' sel' : ''}" data-i="${i}" style="--c:${TIER_VAR[f.tier]};left:${f.cx}%;top:${f.cy}%;${S.hidden.has(f.tier) ? 'display:none' : ''}"></span>`).join('');
+  applyView(false);
+}
+function renderInspector(){
+  const f = feats()[S.sel]; if (!f) return;
+  const r = rows(), pos = r.findIndex(x => x.i === S.sel);
+  $('#iId').textContent = f.id;
+  $('#iPos').textContent = pos >= 0 ? `${pos + 1}/${r.length}` : '';
+  $('#iTags').innerHTML = `<span class="tag" style="--c:${TIER_VAR[f.tier]}">${f.tier}</span><span class="tag plain">${f.type}</span>`;
+  $('#iSum').textContent = f.summary;
+  $('#iProps').innerHTML = [
+    ['Area', `${fmt(f.area_sqm, 1)} m²`, 1],
+    ['Magnitude', `<span class="bar" style="--c:${TIER_VAR[f.tier]}"><i style="width:${f.magnitude*100}%"></i></span>${f.magnitude.toFixed(3)}`, 1],
+    ['Action', f.priority.replace(/^Priority (\d) - /, 'P$1 · ')],
+    ['Exposure', f.exposure],
+    ['Buffer check', f.violation],
+    ['Centroid', `${fLat(f.lat)}<br>${fLon(f.lon)}`, 1],
+  ].filter(([, v]) => v).map(([k, v, m]) => `<dt>${k}</dt><dd${m ? ' class="mono"' : ''}>${v}</dd>`).join('');
+  $('#capId').textContent = f.id;
+  renderVerify();
+}
+function renderVerify(){
+  const f = feats()[S.sel], v = verify[`${S.th}:${f.id}`] || {c:0, f:0};
+  const state = v.f > v.c ? 'Disputed' : v.c ? 'Field-confirmed' : 'AI detected · unverified';
+  $('#vBadge').textContent = `${v.c} ✓  ${v.f} ⚑`;
+  $('#vState').innerHTML = `<b>${state}.</b> Responder confirmations build the municipal audit trail for ${f.id}.`;
+}
+function renderAdvisory(){
+  const a = ADV[S.lang], f = feats()[S.sel];
+  $('#advTitle').textContent = a.title;
+  $('#advBody').textContent = f ? a.body(f, (TYPE_I18N[f.type] || {})[S.lang] || f.type, fmt(f.area_sqm), sc().place)
+    + (f.tier === 'Critical' || f.tier === 'High' ? a.urgent : a.routine) : '';
+  $('#advBody').lang = S.lang === 'en' ? 'en' : S.lang;
+}
+function renderBanner(){
+  const nv = sc().naive;
+  $('#banner').innerHTML = `<b>Naive NDVI baseline:</b> |ΔNDVI| > ${nv.threshold} flags ${fmt(nv.regions)} regions (${fmt(nv.area_sqm)} m²). `
+    + `${fmt(nv.false_alarms.length)} of them barely touch ${nv.reference} (<20% overlap) and are drawn dashed. `
+    + `Benchmark false-alarm rate ${pct(NV.false_alarm_rate)} vs ${pct(AI.false_alarm_rate)}.`;
+}
+function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderBanner(); }
 
-      // 1. Regular ChangeIntel AI Polygons
-      theaterData.features.forEach((feat, idx) => {{
-        const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        const ptsStr = feat.pts.map(p => `${{p[0]}},${{p[1]}}`).join(' ');
-        poly.setAttribute('points', ptsStr);
-        poly.setAttribute('fill', feat.color);
-        poly.setAttribute('fill-opacity', idx === activeFeatureIndex ? '0.6' : '0.25');
-        poly.setAttribute('stroke', feat.color);
-        poly.setAttribute('stroke-width', idx === activeFeatureIndex ? '3.5' : '1.8');
-        poly.setAttribute('class', `vector-polygon ${{idx === activeFeatureIndex ? 'is-active' : ''}}`);
+function select(i, flyTo){
+  S.sel = i; renderMap(); renderInspector(); renderAdvisory();
+  $$('#tbody tr').forEach(tr => tr.setAttribute('aria-selected', +tr.dataset.row === i));
+  $(`#tbody tr[data-row="${i}"]`)?.scrollIntoView({block:'nearest'});
+  if (flyTo) flyToFeature(i);
+}
+function step(d){
+  const r = rows(); if (!r.length) return;
+  const pos = r.findIndex(x => x.i === S.sel);
+  select(r[(pos + d + r.length) % r.length].i, true);
+}
 
-        poly.addEventListener('click', (e) => {{
-          e.stopPropagation();
-          activeFeatureIndex = idx;
-          renderVectorPolygons();
-          updateFeatureInspector();
-        }});
+async function loadTheater(th){
+  S.th = th; S.hidden.clear(); S.q = ''; $('#search').value = '';
+  const fs = feats();
+  fs.forEach(f => { const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
+    f._span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); });
+  S.sel = fs.map((f, i) => i).sort((a, b) => tierRank(fs[b].tier) - tierRank(fs[a].tier) || fs[b].area_sqm - fs[a].area_sqm)[0];
+  const t1 = $('#imgT1'), t2 = $('#imgT2');
+  t1.src = sc().images.t1; t2.src = sc().images.t2;
+  await Promise.all([t1.decode().catch(() => {}), t2.decode().catch(() => {})]);
+  V.iw = t1.naturalWidth || 100; V.ih = t1.naturalHeight || 100;
+  worlds.forEach(w => { w.style.width = V.iw + 'px'; w.style.height = V.ih + 'px'; });
+  renderAll(); fitView(false); setCurtain(50);
+}
 
-        svg.appendChild(poly);
-      }});
+/* ============================================================
+   EXPORTS
+   ============================================================ */
+function download(data, name, mime){
+  const url = URL.createObjectURL(new Blob([data], {type:mime}));
+  const a = Object.assign(document.createElement('a'), {href:url, download:name});
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast(`Downloaded ${name}`);
+}
+const bytes = b64 => Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+const xmlEsc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function capXml(f){
+  const crit = f.tier === 'Critical', la = f.lat, lo = f.lon;
+  const sent = new Date().toISOString().replace(/\.\d+Z$/, '+00:00');
+  const uid = Math.random().toString(16).slice(2, 8).toUpperCase();
+  const ring = f.ring.slice();
+  const [a, z] = [ring[0], ring[ring.length - 1]];
+  if (a[0] !== z[0] || a[1] !== z[1]) ring.push(a);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>IND-SACHET-${sent.slice(0, 10).replace(/-/g, '')}-${f.id}-${uid}</identifier>
+  <sender>ChangeIntel-SatelliteEngine@ndma.gov.in</sender>
+  <sent>${sent}</sent>
+  <status>Draft</status>
+  <msgType>Alert</msgType>
+  <scope>Restricted</scope>
+  <restriction>For Official Authorization Only</restriction>
+  <note>Draft alert generated by ChangeIntel AI. Awaiting official verification and sign-off by District Disaster Management Authority (DDMA).</note>
+  <info>
+    <language>en-IN</language>
+    <category>Geo</category>
+    <event>Rapid Structural Change / Damage Anomaly</event>
+    <urgency>${crit ? 'Immediate' : 'Expected'}</urgency>
+    <severity>${crit ? 'Extreme' : 'Severe'}</severity>
+    <certainty>Observed</certainty>
+    <headline>${xmlEsc(`Satellite Change Alert: ${f.area_sqm} m² ${f.type} Detected`)}</headline>
+    <description>${xmlEsc(`Bi-temporal satellite intelligence detected a change footprint of ${f.area_sqm} m² at (${la.toFixed(6)}, ${lo.toFixed(6)}) with confidence ${(f.magnitude*100).toFixed(1)}%. Classification: ${f.type}. ${f.summary}`)}</description>
+    <instruction>Field officers to inspect coordinates immediately. Verify structural integrity or illegal encroachment before taking regulatory action.</instruction>
+    <area>
+      <areaDesc>${xmlEsc(`${sc().label}: footprint near (${la.toFixed(6)}, ${lo.toFixed(6)})`)}</areaDesc>
+      <polygon>${ring.map(([y, x]) => `${y.toFixed(6)},${x.toFixed(6)}`).join(' ')}</polygon>
+    </area>
+  </info>
+</alert>
+`;
+}
+function csv(){
+  const q = v => `"${String(v).replace(/"/g, '""')}"`;
+  const head = ['feature_id','severity_tier','change_type','area_sqm','magnitude','centroid_lat','centroid_lon','action_priority','verification'];
+  return [head.join(',')].concat(rows().map(({f}) => {
+    const v = verify[`${S.th}:${f.id}`] || {c:0, f:0};
+    return [f.id, f.tier, q(f.type), f.area_sqm, f.magnitude, f.lat.toFixed(6), f.lon.toFixed(6), q(f.priority), `${v.c} confirmed / ${v.f} flagged`].join(',');
+  })).join('\n');
+}
+const DL = {
+  geojson: () => download(D.files[S.th].geojson, `${S.th}_change_intelligence.geojson`, 'application/geo+json'),
+  gpkg: () => download(bytes(D.files[S.th].gpkg), `${S.th}_change_intelligence.gpkg`, 'application/geopackage+sqlite3'),
+  cap: () => { const f = feats()[S.sel]; download(capXml(f), `sachet_cap_${S.th}_${f.id}.xml`, 'application/xml'); },
+  sitrep: () => download(bytes(D.files[S.th].sitrep), `ChangeIntel_SitRep_${S.th}.pdf`, 'application/pdf'),
+  csv: () => download(csv(), `${S.th}_detections.csv`, 'text/csv'),
+};
 
-      // 2. Naive Baseline False Alarms (when Naive mode is active)
-      if (currentEngineMode === 'naive' && currentActiveTheater === 'mumbai') {{
-        theaterData.naive_false_alarms.forEach(fa => {{
-          const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-          const ptsStr = fa.pts.map(p => `${{p[0]}},${{p[1]}}`).join(' ');
-          poly.setAttribute('points', ptsStr);
-          poly.setAttribute('fill', '#c084fc');
-          poly.setAttribute('fill-opacity', '0.5');
-          poly.setAttribute('stroke', '#9333ea');
-          poly.setAttribute('stroke-width', '2');
-          poly.setAttribute('stroke-dasharray', '3,3');
-          poly.setAttribute('class', 'vector-polygon');
+/* ============================================================
+   ACTIONS (delegated)
+   ============================================================ */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  e.preventDefault();
+  const [k, v] = el.dataset.act.split(':');
+  switch (k) {
+    case 'fly': fly(v in D.scenes ? v : KEYS[0], 1); break;
+    case 'back': if (S.stage === 'dash') fly(S.th, -1); break;
+    case 'th': if (v !== S.th) { loadTheater(v).then(() => toast(`Loaded ${D.scenes[v].label}`)); } break;
+    case 'mode': S.mode = v; renderHeader(); renderKpis(); renderLegend(); renderNaive(); break;
+    case 'lang': S.lang = v; renderHeader(); renderAdvisory(); break;
+    case 'view': S.view = v; renderHeader(); setCurtain(S.curtain); break;
+    case 'zoom': { const r = map.getBoundingClientRect();
+      v === 'fit' ? fitView(true) : zoomAt(v === 'in' ? 1.6 : 1/1.6, r.width/2, r.height/2, true); break; }
+    case 'sel': step(v === 'next' ? 1 : -1); break;
+    case 'focus': flyToFeature(S.sel); break;
+    case 'copy': {
+      const f = feats()[S.sel], txt = `${f.lat.toFixed(6)}, ${f.lon.toFixed(6)}`;
+      (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject()).then(() => toast(`Copied ${txt}`), () => toast(txt));
+      break; }
+    case 'verify': {
+      const f = feats()[S.sel], key = `${S.th}:${f.id}`, rec = verify[key] = verify[key] || {c:0, f:0};
+      v === 'yes' ? rec.c++ : rec.f++;
+      try { localStorage.setItem('ci-verify', JSON.stringify(verify)); } catch (err) {}
+      renderVerify();
+      toast(v === 'yes' ? `${f.id}: ground-truth confirmation logged` : `${f.id}: flagged for analyst review`);
+      break; }
+    case 'dl': DL[v](); break;
+    case 'bench': $('#bench').showModal(); break;
+    case 'bench-close': $('#bench').close(); break;
+  }
+});
+$('#tbody').addEventListener('click', e => { const tr = e.target.closest('[data-row]'); if (tr) select(+tr.dataset.row, true); });
+$('#tbody').addEventListener('pointerover', e => {
+  const tr = e.target.closest('[data-row]');
+  $$('.poly.hl').forEach(p => p.classList.remove('hl'));
+  if (tr) $(`.poly[data-i="${tr.dataset.row}"]`)?.classList.add('hl');
+});
+$('#legend').addEventListener('change', e => {
+  const t = e.target.dataset.tier; if (!t) return;
+  e.target.checked ? S.hidden.delete(t) : S.hidden.add(t);
+  renderLegend(); renderTable(); renderMap(); renderInspector();
+});
+$$('th button').forEach(b => b.addEventListener('click', () => {
+  const k = b.dataset.sort; S.sort = {k, d:S.sort.k === k ? -S.sort.d : (k === 'id' ? 1 : -1)}; renderTable(); renderInspector();
+}));
+$('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowerCase(); renderTable(); renderInspector(); });
+$('#fill').addEventListener('input', e => $('#vec').style.setProperty('--fill', e.target.value/100));
+$('#bench').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); });
+addEventListener('keydown', e => {
+  if (S.stage !== 'dash' || flying || e.target.closest('input, dialog[open]') || e.metaKey || e.ctrlKey) return;
+  const r = map.getBoundingClientRect();
+  const act = {ArrowRight:() => step(1), ArrowLeft:() => step(-1), j:() => step(1), k:() => step(-1),
+    f:() => fitView(true), '+':() => zoomAt(1.6, r.width/2, r.height/2, true), '=':() => zoomAt(1.6, r.width/2, r.height/2, true),
+    '-':() => zoomAt(1/1.6, r.width/2, r.height/2, true), '1':() => $('[data-act="view:before"]').click(),
+    '2':() => $('[data-act="view:swipe"]').click(), '3':() => $('[data-act="view:after"]').click()}[e.key];
+  if (act) { e.preventDefault(); act(); }
+});
+let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (S.stage === 'dash') fitView(false); }, 120); });
 
-          poly.addEventListener('click', (e) => {{
-            e.stopPropagation();
-            triggerToast(`False Alarm: ${{fa.type}} (${{fa.reason}})`);
-          }});
+/* sector-driven chrome: nav, CTAs, switcher */
+(() => {
+  const arw = '<svg class="arw" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M0.8 5h10M7.1 1.4 10.9 5l-3.8 3.6" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const links = KEYS.map(k => `<a data-act="fly:${k}">${city(k)}</a>`).join('') + '<a data-act="bench">Benchmark</a>';
+  $('#navLinks').innerHTML = links; $('#menuLinks').innerHTML = links;
+  $('#ctas').innerHTML = KEYS.slice(0, 2).map((k, i) =>
+    `<button class="btn btn-lg ${i ? 'btn-ghost' : 'btn-primary'}" data-act="fly:${k}">${i ? `${city(k)} tile` : `Zoom into ${city(k)}`}${arw}</button>`).join('');
+  $('#sectorSeg').innerHTML = KEYS.map(k => `<button data-act="th:${k}">${city(k)}</button>`).join('');
+  $('#navF1').textContent = `F1 ${pct(AI.f1_score)}`;
+})();
 
-          svg.appendChild(poly);
-        }});
-      }}
-    }}
+/* benchmark dialog + hero meta from data */
+(() => {
+  const rowsB = [['F1-score','f1_score'],['IoU','iou'],['Precision','precision'],['Recall','recall'],['False-alarm rate','false_alarm_rate']];
+  $('#benchRows').innerHTML = rowsB.map(([l, k]) => {
+    const lower = k === 'false_alarm_rate', rel = (AI[k] - NV[k])/NV[k]*100;
+    return `<tr><td><b>${l}</b></td><td class="num mono${lower ? ' lose' : ''}">${pct(NV[k])}</td><td class="num mono win">${pct(AI[k])}</td><td class="num mono win">${rel > 0 ? '+' : ''}${rel.toFixed(1)}%</td></tr>`;
+  }).join('');
+  $('#benchP').textContent = `Fine-tuned Bitemporal Transformer (BIT) vs. a naive spectral-difference baseline, evaluated on ${B.evaluation_samples_count} LEVIR-CD test tiles.`;
+  $('#benchNote').innerHTML = `<b>Takeaway:</b> naive spectral differencing mistakes seasonal vegetation and sun-angle shifts for change (${pct(NV.false_alarm_rate)} false alarms). ChangeIntel cuts false alarms by <b>${B.false_alarm_reduction_percentage}%</b> to ${pct(AI.false_alarm_rate)}.`;
+  $('#heroMeta').innerHTML = `LEVIR-CD F1 <i>${pct(AI.f1_score)}</i> · false alarms <i>${pct(AI.false_alarm_rate)}</i> vs ${pct(NV.false_alarm_rate)} naive`;
+})();
+</script>
 
-    function updateFeatureInspector() {{
-      const theaterData = dataset[currentActiveTheater];
-      const feat = theaterData.features[activeFeatureIndex] || theaterData.features[0];
-
-      document.getElementById('featIdBadge').textContent = feat.id;
-
-      const badge = document.getElementById('featSeverityBadge');
-      badge.textContent = `${{feat.tier.toUpperCase()}} SEVERITY`;
-      badge.style.color = feat.color;
-      badge.style.background = `${{feat.color}}18`;
-
-      document.getElementById('featAreaVal').textContent = `${{feat.area_sqm.toLocaleString()}} m²`;
-      document.getElementById('featTypeVal').textContent = feat.type;
-      document.getElementById('featMagVal').textContent = `${{feat.magnitude}} (${{feat.tier}})`;
-      document.getElementById('featViolationVal').textContent = feat.violation;
-      document.getElementById('featCoordsVal').textContent = `${{feat.lat.toFixed(4)}}° N, ${{feat.lon.toFixed(4)}}° E`;
-
-      document.getElementById('verifyStatusText').textContent = `AI Detected • ${{feat.id === 'CHG_0003' ? '2' : '0'}} Verified`;
-    }}
-
-    function updateAdvisoryText() {{
-      const dict = vernacularDict[currentLanguage];
-      document.getElementById('advisoryTitle').textContent = dict.title;
-      if (currentActiveTheater === 'mumbai') {{
-        document.getElementById('advisoryBody').textContent = dict.mumbai_alert;
-      }} else {{
-        document.getElementById('advisoryBody').textContent = dict.levir_alert;
-      }}
-    }}
-
-    // ============================================================
-    // ENGINE MODE SWITCHER (AI vs Naive Baseline)
-    // ============================================================
-    function setEngineMode(mode) {{
-      currentEngineMode = mode;
-      const btnAi = document.getElementById('segAi');
-      const btnNaive = document.getElementById('segNaive');
-      const warningBox = document.getElementById('naiveWarningBox');
-
-      if (mode === 'ai') {{
-        btnAi.classList.add('is-active');
-        btnNaive.classList.remove('is-active', 'is-naive');
-        warningBox.classList.remove('is-active');
-        triggerToast("ChangeIntel AI Active: False alarms pruned by 91.6%");
-      }} else {{
-        btnNaive.classList.add('is-active', 'is-naive');
-        btnAi.classList.remove('is-active');
-        warningBox.classList.add('is-active');
-        triggerToast("Naive Baseline Active: 42.9% False Alarm Rate!");
-      }}
-
-      renderVectorPolygons();
-    }}
-
-    // ============================================================
-    // VERNACULAR LANGUAGE SWITCHER
-    // ============================================================
-    function setLanguage(lang) {{
-      currentLanguage = lang;
-      document.getElementById('langEn').classList.toggle('is-active', lang === 'en');
-      document.getElementById('langMr').classList.toggle('is-active', lang === 'mr');
-      document.getElementById('langHi').classList.toggle('is-active', lang === 'hi');
-      updateAdvisoryText();
-      const names = {{ en: 'English', mr: 'मराठी', hi: 'हिंदी' }};
-      triggerToast(`Language switched to: ${{names[lang]}}`);
-    }}
-
-    function verifyAction(isConfirm) {{
-      const dict = vernacularDict[currentLanguage];
-      if (isConfirm) {{
-        triggerToast(dict.confirm_toast);
-        document.getElementById('verifyStatusText').textContent = "AI Detected • 3 Verified";
-      }} else {{
-        triggerToast(dict.flag_toast);
-      }}
-    }}
-
-    // ============================================================
-    // CURTAIN SWIPE SLIDER LOGIC
-    // ============================================================
-    const canvasContainer = document.getElementById('mapCanvasContainer');
-    const curtainBar = document.getElementById('curtainBar');
-    const satPostRevealer = document.getElementById('satPostRevealer');
-    let isSwiping = false;
-
-    function applyCurtainPos(clientX) {{
-      const rect = canvasContainer.getBoundingClientRect();
-      let pos = (clientX - rect.left) / rect.width;
-      pos = Math.max(0.01, Math.min(0.99, pos));
-      const pct = (pos * 100).toFixed(2);
-
-      curtainBar.style.left = `${{pct}}%`;
-      satPostRevealer.style.clipPath = `inset(0 0 0 ${{pct}}%)`;
-    }}
-
-    curtainBar.addEventListener('pointerdown', (e) => {{
-      isSwiping = true;
-      curtainBar.setPointerCapture(e.pointerId);
-    }});
-
-    window.addEventListener('pointermove', (e) => {{
-      if (!isSwiping) return;
-      applyCurtainPos(e.clientX);
-    }});
-
-    window.addEventListener('pointerup', () => {{
-      isSwiping = false;
-    }});
-
-    canvasContainer.addEventListener('click', (e) => {{
-      if (e.target.closest('.vector-polygon') || e.target.closest('.curtain-pill')) return;
-      applyCurtainPos(e.clientX);
-    }});
-
-    // ============================================================
-    // 1-CLICK EXPORTS WITH BROWSER FALLBACK
-    // ============================================================
-    function directDownloadBlob(data, filename, mime) {{
-      try {{
-        const blob = new Blob([data], {{ type: mime }});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        triggerToast(`Downloaded ${{filename}}`);
-      }} catch (err) {{
-        triggerToast(`Export ready: ${{filename}}`);
-      }}
-    }}
-
-    function downloadGeoJson() {{
-      directDownloadBlob(geojsonRaw, `${{currentActiveTheater}}_change_intelligence.geojson`, 'application/geo+json');
-    }}
-
-    function downloadCapAlert() {{
-      directDownloadBlob(capXmlRaw, 'sachet_cap_CHG_0001.xml', 'application/xml');
-    }}
-
-    function downloadSitRep() {{
-      try {{
-        const bytes = atob(pdfDataB64);
-        const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        directDownloadBlob(arr, 'ChangeIntel_Executive_SitRep.pdf', 'application/pdf');
-      }} catch(e) {{
-        triggerToast("SitRep PDF prepared.");
-      }}
-    }}
-
-    function downloadGeoPackage() {{
-      try {{
-        const bytes = atob(gpkgDataB64);
-        const arr = new Uint8Array(bytes.length);
-        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        directDownloadBlob(arr, `${{currentActiveTheater}}_change_intelligence.gpkg`, 'application/x-sqlite3');
-      }} catch(e) {{
-        triggerToast("GeoPackage (.gpkg) prepared.");
-      }}
-    }}
-
-    // ============================================================
-    // BENCHMARK MODAL
-    // ============================================================
-    function openBenchmarkModal() {{
-      document.getElementById('benchmarkModal').classList.add('is-open');
-    }}
-    function closeBenchmarkModal(e) {{
-      if (e) e.stopPropagation();
-      document.getElementById('benchmarkModal').classList.remove('is-open');
-    }}
-
-    // Initialize on page load
-    window.addEventListener('DOMContentLoaded', () => {{
-      selectSector('mumbai');
-    }});
-  </script>
+<script>
+/* B) burger */
+(function(){
+  var b = document.getElementById('burger'), m = document.getElementById('menu'); if (!b || !m) return;
+  function set(open){ m.classList.toggle('open', open); b.setAttribute('aria-expanded', open); b.setAttribute('aria-label', open ? 'Close menu' : 'Open menu'); }
+  b.addEventListener('click', function(e){ e.stopPropagation(); set(!m.classList.contains('open')); });
+  m.addEventListener('click', function(e){ if (e.target.closest('a')) set(false); });
+  document.addEventListener('click', function(e){ if (m.classList.contains('open') && !m.contains(e.target) && !b.contains(e.target)) set(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && m.classList.contains('open')) { set(false); b.focus(); } });
+})();
+</script>
 </body>
 </html>
-'''
+"""
 
-with open('web/index.html', 'w') as f:
-    f.write(html_content)
-
-with open('/Users/Siddhesh/.gemini/antigravity/brain/1130446f-5a68-4dce-9f35-67b8d1780ab5/changeintel_console.html', 'w') as f:
-    f.write(html_content)
-
-print("Successfully written refreshed Light Mode UI with pixel alignment and clean bullets!")
+html = TEMPLATE.replace('/*__DATA__*/null', json.dumps(DATA, ensure_ascii=False).replace('</', '<\\/'))
+(ROOT / 'web/index.html').write_text(html, encoding='utf-8')
+print(f"Wrote web/index.html ({len(html) / 1e6:.2f} MB)")

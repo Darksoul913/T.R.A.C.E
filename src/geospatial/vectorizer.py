@@ -96,6 +96,8 @@ class GeospatialVectorizer:
             raster_crs = crs
 
         is_geographic = raster_crs.is_geographic if raster_crs else True
+        # centroid_lon/lat are always WGS84, even when the raster is projected (e.g. UTM)
+        to_wgs84 = None if is_geographic else pyproj.Transformer.from_crs(raster_crs, CRS.from_epsg(4326), always_xy=True).transform
 
         features_data = []
 
@@ -122,6 +124,8 @@ class GeospatialVectorizer:
 
             centroid = geom_simplified.centroid
             lon, lat = centroid.x, centroid.y
+            if to_wgs84:
+                lon, lat = to_wgs84(lon, lat)
 
             # 4. Calculate True Geodesic Area in m² via Local UTM
             if is_geographic:

@@ -68,6 +68,9 @@ class SpectralClassifier:
                 "summary": "Empty mask"
             }
 
+        # Cast before any arithmetic: uint8 band sums overflow (e.g. NIR + Red > 255 wraps)
+        t1_bands = t1_bands.astype(np.float32)
+        t2_bands = t2_bands.astype(np.float32)
         c = t1_bands.shape[0]
 
         # Case 1: Multispectral with NIR (e.g. Sentinel-2 OSCD: Red=0, Green=1, Blue=2, NIR=3)

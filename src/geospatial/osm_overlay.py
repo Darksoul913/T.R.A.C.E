@@ -71,18 +71,8 @@ class OSMExposureOverlay:
         except Exception:
             pass
 
-        # Graceful Fallback: Deterministic simulated local civic landmarks for demo continuity
-        cx, cy = (min_lon + max_lon) / 2.0, (min_lat + max_lat) / 2.0
-        dx, dy = (max_lon - min_lon) * 0.25, (max_lat - min_lat) * 0.25
-        return {
-            "amenities": [
-                {"type": "hospital", "name": "Civil General Hospital", "lat": cy + dy, "lon": cx - dx},
-                {"type": "school", "name": "Municipal Primary School", "lat": cy - dy, "lon": cx + dx}
-            ],
-            "waterways": [
-                {"type": "drain", "name": "Stormwater Drainage Nala", "lat": cy + dy * 0.5, "lon": cx}
-            ]
-        }
+        # Offline: report "not assessed" rather than inventing landmarks
+        return {"amenities": [], "waterways": [], "available": False}
 
     @classmethod
     def enrich_with_exposure(
@@ -102,6 +92,10 @@ class OSMExposureOverlay:
             bbox = [float(minx), float(miny), float(maxx), float(maxy)]
 
         osm_data = cls.fetch_osm_features(bbox)
+        if not osm_data.get("available", True):
+            enriched["encroachment_violation"] = "Not assessed (OSM unavailable)"
+            enriched["civic_exposure"] = "Not assessed (OSM unavailable)"
+            return enriched
         amenities = osm_data.get("amenities", [])
         waterways = osm_data.get("waterways", [])
 

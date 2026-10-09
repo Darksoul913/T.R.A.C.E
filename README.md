@@ -83,7 +83,14 @@ python scripts/build_data.py
 python src/models/evaluate.py
 ```
 
-### 5. Launch Interactive Web Console
+### 5. Build the Static Console (`web/index.html`)
+```bash
+.venv/bin/python scripts/build_scenes.py         # runs BIT + naive baseline per sector -> web/scenes.json + data/outputs/*
+python scripts/build_frontend_light.py            # inlines scenes into a self-contained web/index.html
+```
+Sectors are configured in `SECTORS` at the top of `scripts/build_scenes.py`.
+
+### 6. Launch Interactive Web Console (Streamlit)
 ```bash
 streamlit run web/app.py
 ```
