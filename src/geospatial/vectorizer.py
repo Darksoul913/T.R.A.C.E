@@ -120,12 +120,14 @@ class GeospatialVectorizer:
         else:
             raster_crs = crs
 
-        is_geographic = raster_crs.is_geographic if raster_crs else True
-        pixel_area = self.pixel_area_sqm(transform, raster_crs, (h, w))
+        is_georef = (raster_crs is not None)
+        is_geographic = bool(raster_crs.is_geographic) if is_georef else False
+        pixel_area = self.pixel_area_sqm(transform, raster_crs, (h, w)) if is_georef else 1.0
         gsd = float(np.sqrt(pixel_area))
         min_area = self.min_area_sqm if self.min_area_sqm is not None else self.min_area_px * pixel_area
-        # centroid_lon/lat are always WGS84, even when the raster is projected (e.g. UTM)
-        to_wgs84 = None if is_geographic else pyproj.Transformer.from_crs(raster_crs, CRS.from_epsg(4326), always_xy=True).transform
+        # centroid_lon/lat are WGS84 when georeferenced, or pixel coordinates when ungeoreferenced
+        to_wgs84 = (pyproj.Transformer.from_crs(raster_crs, CRS.from_epsg(4326), always_xy=True).transform
+                    if (is_georef and not is_geographic) else None)
 
         features_data = []
 
@@ -151,12 +153,16 @@ class GeospatialVectorizer:
                 geom_simplified = geom.simplify(1.0, preserve_topology=True)
 
             centroid = geom_simplified.centroid
-            lon, lat = centroid.x, centroid.y
-            if to_wgs84:
-                lon, lat = to_wgs84(lon, lat)
+            if is_georef:
+                lon, lat = centroid.x, centroid.y
+                if to_wgs84:
+                    lon, lat = to_wgs84(lon, lat)
+                lon, lat = round(lon, 6), round(lat, 6)
+            else:
+                lon, lat = None, None
 
-            # 4. Calculate True Geodesic Area in m² via Local UTM
-            if is_geographic:
+            # 4. Calculate True Geodesic Area in m² via Local UTM (or px² if ungeoreferenced)
+            if is_geographic and is_georef:
                 utm_epsg = self.get_utm_epsg(lon, lat)
                 project = pyproj.Transformer.from_crs(
                     raster_crs, CRS.from_epsg(utm_epsg), always_xy=True
@@ -241,8 +247,8 @@ class GeospatialVectorizer:
                 "change_type": change_type,
                 "summary": sem_summary,
                 "compactness": round(compactness, 3),
-                "centroid_lon": round(lon, 6),
-                "centroid_lat": round(lat, 6),
+                "centroid_lon": lon,
+                "centroid_lat": lat,
                 "verification_status": "AI Detected",
                 "verification_count": 0,
                 "geometry": geom_simplified

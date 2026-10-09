@@ -74,8 +74,15 @@ class TiledInferenceEngine:
         """
         # Ensure 3-channel RGB for BIT model
         c, h, w = img_t1.shape
-        t1_rgb = img_t1[:3].copy()
-        t2_rgb = img_t2[:3].copy()
+        if c == 1:
+            t1_rgb = np.repeat(img_t1[:1], 3, axis=0).copy()
+            t2_rgb = np.repeat(img_t2[:1], 3, axis=0).copy()
+        elif c == 2:
+            t1_rgb = np.concatenate([img_t1[:2], img_t1[:1]], axis=0).copy()
+            t2_rgb = np.concatenate([img_t2[:2], img_t2[:1]], axis=0).copy()
+        else:
+            t1_rgb = img_t1[:3].copy()
+            t2_rgb = img_t2[:3].copy()
 
         # Scale to [0, 1] float
         if t1_rgb.max() > 1.0:

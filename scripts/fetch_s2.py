@@ -17,7 +17,9 @@ import rasterio
 import requests
 from rasterio.crs import CRS
 from rasterio.transform import from_origin
+from rasterio.features import rasterize
 from rasterio.warp import Resampling, reproject, transform_bounds
+from shapely.geometry import box, shape
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -37,6 +39,8 @@ def search(bbox, start, end, max_cloud, mgrs=None):
             "datetime": f"{start}T00:00:00Z/{end}T23:59:59Z", "query": {"eo:cloud_cover": {"lt": max_cloud}}}
     items = requests.post(STAC, json=body, timeout=60).json().get("features", [])
     items = [i for i in items if not mgrs or i["properties"].get("grid:code") == mgrs]
+    # whole window inside the scene footprint: no half-tiles stitched across MGRS boundaries
+    items = [i for i in items if shape(i["geometry"]).contains(box(*bbox))]
     # least cloud first; for the same date prefer the newest processing baseline (consistent radiometry)
     return sorted(items, key=lambda i: (i["properties"]["eo:cloud_cover"], -float(i["properties"].get("s2:processing_baseline", 0))))
 
@@ -113,6 +117,18 @@ def fetch_pair(area, cfg, windows, prefix, tf, crs, shape, out=OUT):
     return meta
 
 
+def write_reference(area, ref, tf, crs, shape_hw):
+    """Rasterizes a Copernicus EMS delineation (observed event polygons) onto the area's grid:
+    {area}_ground_truth.tif (event) and {area}_reference_aoi.tif (where EMS mapped at all)."""
+    import geopandas as gpd
+    burn = lambda gdf: rasterize(((g, 1) for g in gdf.to_crs(crs).geometry), out_shape=shape_hw, transform=tf, dtype="uint8")
+    event = gpd.read_file(ROOT / ref["event"])
+    aoi = gpd.read_file(ROOT / ref["aoi"])
+    write(OUT / f"{area}_ground_truth.tif", burn(event).astype(np.uint8), tf, crs)
+    write(OUT / f"{area}_reference_aoi.tif", burn(aoi).astype(np.uint8), tf, crs)
+    print(f"  reference {ref['source']}: {burn(event).mean():.1%} of the window is the observed event")
+
+
 def fetch_series(area, cfg, tf, crs, shape):
     s = cfg["series"]
     index = []
@@ -141,6 +157,9 @@ def main(names):
         tf, crs, shape = grid(cfg["bbox"])
         print(f"[{area}] {shape[1]}x{shape[0]} px at {RES:.0f} m, {crs}")
         meta = {"pair": fetch_pair(area, cfg, cfg["pair"], area, tf, crs, shape)}
+        if "reference" in cfg:
+            write_reference(area, cfg["reference"], tf, crs, shape)
+            meta["reference"] = cfg["reference"]
         if "seasonal_pair" in cfg:
             meta["seasonal_pair"] = fetch_pair(area, cfg, cfg["seasonal_pair"], f"{area}_seasonal", tf, crs, shape, RAW)
         if "series" in cfg:

@@ -32,7 +32,7 @@ html_template = f'''<!DOCTYPE html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>ChangeIntel — Autonomous Satellite Change Intelligence</title>
+  <title>T.R.A.C.E. (Terrain Analysis & Change Evaluation) — Satellite Change Intelligence</title>
   
   <!-- Typography: Plus Jakarta Sans & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1218,7 +1218,7 @@ html_template = f'''<!DOCTYPE html>
     <header class="nav" id="mainNav">
       <a href="#" class="logo-container" onclick="returnToOrbit()">
         <div class="logo-icon"></div>
-        <div class="logo-text">Change<span>Intel</span></div>
+        <div class="logo-text">T.R.A.<span>C.E.</span></div>
       </a>
       
       <div class="nav-telemetry mono">
@@ -1304,9 +1304,9 @@ html_template = f'''<!DOCTYPE html>
           <button class="theater-btn" id="btnTheaterLevir" onclick="switchTheater('levir')">Texas (LEVIR)</button>
         </div>
 
-        <!-- Engine Mode Toggle (ChangeIntel AI vs Naive Baseline) -->
+        <!-- Engine Mode Toggle (T.R.A.C.E. AI vs Naive Baseline) -->
         <div class="engine-toggle-wrap">
-          <button class="engine-btn is-active" id="btnEngineAi" onclick="setEngineMode('ai')">ChangeIntel AI</button>
+          <button class="engine-btn is-active" id="btnEngineAi" onclick="setEngineMode('ai')">T.R.A.C.E. AI</button>
           <button class="engine-btn" id="btnEngineNaive" onclick="setEngineMode('naive')">Naive NDVI Baseline</button>
         </div>
 
@@ -1489,7 +1489,7 @@ html_template = f'''<!DOCTYPE html>
             <tr>
               <th>Evaluation Metric</th>
               <th>Naive Spectral Baseline</th>
-              <th style="color:#a855f7">ChangeIntel AI Engine</th>
+              <th style="color:#a855f7">T.R.A.C.E. AI Engine</th>
               <th style="color:#10b981">Improvement</th>
             </tr>
           </thead>
@@ -1528,7 +1528,7 @@ html_template = f'''<!DOCTYPE html>
         </table>
 
         <div style="margin-top:20px;padding:12px;background:rgba(168, 85, 247, 0.1);border:1px solid rgba(168,85,247,0.3);border-radius:8px;font-size:12px;line-height:1.5;color:#c4b5fd">
-          <strong>Key Insight for Judges:</strong> The naive spectral difference approach flags seasonal vegetation drying and sun-angle shifts, resulting in a disastrous 42.9% false alarm rate. ChangeIntel's radiometric histogram matching and Bitemporal Transformer reduce false alarms by <strong>91.6%</strong>.
+          <strong>Key Insight for Judges:</strong> The naive spectral difference approach flags seasonal vegetation drying and sun-angle shifts, resulting in a disastrous 42.9% false alarm rate. T.R.A.C.E.'s radiometric histogram matching and Bitemporal Transformer reduce false alarms by <strong>91.6%</strong>.
         </div>
       </div>
     </div>
@@ -1772,7 +1772,7 @@ html_template = f'''<!DOCTYPE html>
     }}
 
     // ============================================================
-    // ENGINE MODE SWITCHER (ChangeIntel AI vs Naive Baseline)
+    // ENGINE MODE SWITCHER (T.R.A.C.E. AI vs Naive Baseline)
     // ============================================================
     function setEngineMode(mode) {{
       currentEngine = mode;
@@ -1784,7 +1784,7 @@ html_template = f'''<!DOCTYPE html>
         btnAi.classList.add('is-active');
         btnNaive.classList.remove('is-active', 'is-naive');
         banner.classList.remove('is-active');
-        showToast("ChangeIntel AI Engine Active: False alarms pruned by 91.6%");
+        showToast("T.R.A.C.E. AI Engine Active: False alarms pruned by 91.6%");
       }} else {{
         btnNaive.classList.add('is-active', 'is-naive');
         btnAi.classList.remove('is-active');
@@ -1890,7 +1890,7 @@ html_template = f'''<!DOCTYPE html>
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'ChangeIntel_Executive_SitRep.pdf';
+      a.download = 'TRACE_Executive_SitRep.pdf';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

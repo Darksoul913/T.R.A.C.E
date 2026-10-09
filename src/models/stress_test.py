@@ -2,7 +2,7 @@
 stress_test.py - Robustness Stress Test (Stretch Feature #13).
 
 Perturbs only T2 (global brightness shifts, synthetic cast shadows) on the LEVIR-CD test
-split and measures pooled F1 / false alarm rate for ChangeIntel with and without
+split and measures pooled F1 / false alarm rate for T.R.A.C.E. with and without
 histogram matching, and for the naive baseline. Ground truth is unchanged, so any
 new detections under a perturbation are pure false alarms.
 

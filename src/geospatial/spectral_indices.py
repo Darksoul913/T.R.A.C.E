@@ -128,24 +128,27 @@ class SpectralClassifier:
                 summary = (f"Change with no dominant index (ΔNDVI = {d_ndvi:+.2f}, Δ{wi_name} = {d_ndwi:+.2f}"
                            + (f", ΔNDBI = {d_ndbi:+.2f})." if d_ndbi is not None else "; no SWIR band for NDBI)."))
 
-        # Case 2: RGB Only (e.g. LEVIR-CD high-res)
+        # Case 2: RGB or Grayscale/1-2 Band Imagery
         else:
-            r1, g1, b1 = t1_bands[0][mask], t1_bands[1][mask], t1_bands[2][mask]
-            r2, g2, b2 = t2_bands[0][mask], t2_bands[1][mask], t2_bands[2][mask]
+            if t1_bands.shape[0] >= 3:
+                r1, g1, b1 = t1_bands[0][mask], t1_bands[1][mask], t1_bands[2][mask]
+                r2, g2, b2 = t2_bands[0][mask], t2_bands[1][mask], t2_bands[2][mask]
+                brightness1 = np.mean(0.299 * r1 + 0.587 * g1 + 0.114 * b1)
+                brightness2 = np.mean(0.299 * r2 + 0.587 * g2 + 0.114 * b2)
+            else:
+                brightness1 = np.mean(t1_bands[0][mask])
+                brightness2 = np.mean(t2_bands[0][mask])
 
-            brightness1 = np.mean(0.299 * r1 + 0.587 * g1 + 0.114 * b1)
-            brightness2 = np.mean(0.299 * r2 + 0.587 * g2 + 0.114 * b2)
             d_bright = float(brightness2 - brightness1)
-
             d_ndvi = 0.0
             d_ndwi = 0.0
 
             if abs(d_bright) > 20:
                 change_type = "New Building / Structure"
-                summary = f"High-contrast physical building modification (Brightness drift = {d_bright:+.1f})."
+                summary = f"High-contrast physical modification (Intensity drift = {d_bright:+.1f})."
             else:
                 change_type = "Ground Disturbance"
-                summary = f"Textural ground surface disturbance (Brightness drift = {d_bright:+.1f})."
+                summary = f"Textural ground surface disturbance (Intensity drift = {d_bright:+.1f})."
 
         return {
             "change_type": change_type,

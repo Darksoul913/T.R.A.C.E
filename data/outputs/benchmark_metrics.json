@@ -2466,7 +2466,8 @@
     "false_alarm_km2_per_100km2": {
       "ai": 0.25,
       "naive": 12.46,
-      "spectral": 23.69
+      "spectral": 23.69,
+      "track_b": 0.54
     },
     "objects": {
       "ai": {
@@ -2559,6 +2560,13 @@
       "f1_score": 0.078,
       "iou": 0.0406,
       "false_alarm_rate": 0.2369
+    },
+    "track_b": {
+      "precision": 0.4001,
+      "recall": 0.154,
+      "f1_score": 0.2224,
+      "iou": 0.1251,
+      "false_alarm_rate": 0.0054
     }
   },
   "oscd_mumbai": {
@@ -2655,6 +2663,215 @@
       "ai": 0.0,
       "naive": 80.39,
       "spectral": 65.07
+    }
+  },
+  "track_b_loco": {
+    "protocol": "leave-one-city-out over the labelled OSCD cities (10 m Sentinel-2)",
+    "cities": 14,
+    "pooled": {
+      "precision": 0.4001,
+      "recall": 0.154,
+      "f1_score": 0.2224,
+      "iou": 0.1251,
+      "false_alarm_rate": 0.0054
+    },
+    "false_alarm_km2_per_100km2": 0.54,
+    "objects": {
+      "polygons": 148,
+      "real": 108,
+      "gt_objects": 1083,
+      "found": 43,
+      "object_precision": 0.73,
+      "objects_found": 0.04,
+      "polygons_per_city": 10.6,
+      "cleanup": "opening radius 2, minimum 25 px"
+    },
+    "per_city": [
+      {
+        "city": "abudhabi",
+        "threshold": 0.945,
+        "precision": 0.1966,
+        "recall": 0.0089,
+        "f1_score": 0.017,
+        "iou": 0.0085,
+        "false_alarm_rate": 0.0014
+      },
+      {
+        "city": "aguasclaras",
+        "threshold": 0.945,
+        "precision": 0.189,
+        "recall": 0.1326,
+        "f1_score": 0.1559,
+        "iou": 0.0845,
+        "false_alarm_rate": 0.0095
+      },
+      {
+        "city": "beihai",
+        "threshold": 0.945,
+        "precision": 0.4085,
+        "recall": 0.1891,
+        "f1_score": 0.2585,
+        "iou": 0.1484,
+        "false_alarm_rate": 0.007
+      },
+      {
+        "city": "beirut",
+        "threshold": 0.915,
+        "precision": 0.4804,
+        "recall": 0.1753,
+        "f1_score": 0.2568,
+        "iou": 0.1473,
+        "false_alarm_rate": 0.0052
+      },
+      {
+        "city": "bercy",
+        "threshold": 0.915,
+        "precision": 0.1216,
+        "recall": 0.1071,
+        "f1_score": 0.1139,
+        "iou": 0.0604,
+        "false_alarm_rate": 0.0057
+      },
+      {
+        "city": "bordeaux",
+        "threshold": 0.915,
+        "precision": 0.1651,
+        "recall": 0.1929,
+        "f1_score": 0.1779,
+        "iou": 0.0976,
+        "false_alarm_rate": 0.0098
+      },
+      {
+        "city": "cupertino",
+        "threshold": 0.915,
+        "precision": 0.8271,
+        "recall": 0.2096,
+        "f1_score": 0.3345,
+        "iou": 0.2008,
+        "false_alarm_rate": 0.0011
+      },
+      {
+        "city": "hongkong",
+        "threshold": 0.93,
+        "precision": 0.5127,
+        "recall": 0.3254,
+        "f1_score": 0.3982,
+        "iou": 0.2486,
+        "false_alarm_rate": 0.0114
+      },
+      {
+        "city": "mumbai",
+        "threshold": 0.945,
+        "precision": 0.691,
+        "recall": 0.0988,
+        "f1_score": 0.1729,
+        "iou": 0.0946,
+        "false_alarm_rate": 0.0012
+      },
+      {
+        "city": "nantes",
+        "threshold": 0.93,
+        "precision": 0.3352,
+        "recall": 0.2099,
+        "f1_score": 0.2582,
+        "iou": 0.1482,
+        "false_alarm_rate": 0.0048
+      },
+      {
+        "city": "paris",
+        "threshold": 0.93,
+        "precision": 0.0494,
+        "recall": 0.1747,
+        "f1_score": 0.077,
+        "iou": 0.0401,
+        "false_alarm_rate": 0.0097
+      },
+      {
+        "city": "pisa",
+        "threshold": 0.915,
+        "precision": 0.214,
+        "recall": 0.1242,
+        "f1_score": 0.1572,
+        "iou": 0.0853,
+        "false_alarm_rate": 0.0076
+      },
+      {
+        "city": "rennes",
+        "threshold": 0.93,
+        "precision": 0.6968,
+        "recall": 0.1281,
+        "f1_score": 0.2165,
+        "iou": 0.1214,
+        "false_alarm_rate": 0.0015
+      },
+      {
+        "city": "saclay_e",
+        "threshold": 0.93,
+        "precision": 0.0762,
+        "recall": 0.0771,
+        "f1_score": 0.0766,
+        "iou": 0.0398,
+        "false_alarm_rate": 0.0093
+      }
+    ],
+    "train_s": 23.8
+  },
+  "event_validation": {
+    "evros_fire": {
+      "event": "Evros wildfire (EMSR686)",
+      "scope_km2": 588.7,
+      "changeintel": {
+        "precision": 0.986,
+        "recall": 0.8594,
+        "f1_score": 0.9184,
+        "iou": 0.849,
+        "detected_km2": 379.07,
+        "reference_km2": 434.86
+      },
+      "naive_ndvi": {
+        "precision": 0.9537,
+        "recall": 0.8381,
+        "f1_score": 0.8922,
+        "iou": 0.8054,
+        "detected_km2": 382.15,
+        "reference_km2": 434.86
+      },
+      "track_b_urban": {
+        "precision": 0.9038,
+        "recall": 0.0106,
+        "f1_score": 0.0209,
+        "iou": 0.0106,
+        "detected_km2": 5.09,
+        "reference_km2": 434.86
+      }
+    },
+    "trimmu_flood": {
+      "event": "Trimmu flood AOI05 (EMSR838)",
+      "scope_km2": 252.4,
+      "changeintel": {
+        "precision": 0.6356,
+        "recall": 0.9566,
+        "f1_score": 0.7637,
+        "iou": 0.6177,
+        "detected_km2": 115.8,
+        "reference_km2": 76.94
+      },
+      "naive_ndvi": {
+        "precision": 0.4396,
+        "recall": 0.8798,
+        "f1_score": 0.5862,
+        "iou": 0.4147,
+        "detected_km2": 153.98,
+        "reference_km2": 76.94
+      },
+      "track_b_urban": {
+        "precision": 0.3681,
+        "recall": 0.0114,
+        "f1_score": 0.0221,
+        "iou": 0.0112,
+        "detected_km2": 2.38,
+        "reference_km2": 76.94
+      }
     }
   }
 }

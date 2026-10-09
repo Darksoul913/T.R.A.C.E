@@ -1,0 +1,19 @@
+{
+ "pair": [
+  {
+   "id": "S2B_35TMF_20230729_0_L2A",
+   "date": "2023-07-29",
+   "cloud": 0.009483
+  },
+  {
+   "id": "S2A_35TMF_20230912_0_L2A",
+   "date": "2023-09-12",
+   "cloud": 0.994114
+  }
+ ],
+ "reference": {
+  "source": "Copernicus EMS EMSR686 AOI01 DEL_MONIT09 (WorldView-2, 2023-09-03)",
+  "event": "data/raw/ems/EMSR686_AOI01_DEL_MONIT09_v1/EMSR686_AOI01_DEL_MONIT09_observedEventA_v1.json",
+  "aoi": "data/raw/ems/EMSR686_AOI01_DEL_MONIT09_v1/EMSR686_AOI01_DEL_MONIT09_areaOfInterestA_v1.json"
+ }
+}

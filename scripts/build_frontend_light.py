@@ -1,4 +1,4 @@
-"""Builds web/index.html: self-contained ChangeIntel console (globe landing + change dashboard).
+"""Builds web/index.html: self-contained T.R.A.C.E. console (globe landing + change dashboard).
 
 Run from anywhere:  python scripts/build_frontend_light.py
 Everything (imagery, Earth texture, export files) is inlined so the page works offline.
@@ -6,8 +6,10 @@ Everything (imagery, Earth texture, export files) is inlined so the page works o
 import base64
 import json
 import pathlib
+import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 
 
 def b64(rel):
@@ -19,9 +21,12 @@ scenes = json.loads((ROOT / 'web/scenes.json').read_text())
 severity = scenes.pop('_severity', None)   # type weights + priorities, to explain scores in the inspector
 OUT = 'data/outputs/'
 
+from src.exporters.cap_alert import EVENT_PROFILES
+
 DATA = {
     'scenes': scenes,
     'severity': severity,
+    'profiles': EVENT_PROFILES,
     'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text()),
     # src/models/stress_test.py; the chart is omitted when it hasn't been run
     'stress': json.loads((ROOT / OUT / 'stress_test.json').read_text()) if (ROOT / OUT / 'stress_test.json').exists() else None,
@@ -37,7 +42,7 @@ TEMPLATE = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>ChangeIntel — Change, mapped from orbit</title>
+<title>T.R.A.C.E. (Terrain Analysis & Change Evaluation) — Satellite Change Intelligence</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=block" rel="stylesheet">
@@ -284,7 +289,7 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .kpi-l{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .kpi-v{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:3px;font-variant-numeric:tabular-nums}
 .kpi-v small{font-size:12px;color:var(--muted);font-weight:600;margin-left:3px}
-.kpi-s{font-size:11px;color:var(--muted);margin-top:1px}
+.kpi-s{font-size:11px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* legend */
 .legend{display:flex;flex-direction:column;gap:2px}
@@ -337,6 +342,9 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 .halo{fill:none;stroke:#fff;stroke-width:7;stroke-opacity:.9;vector-effect:non-scaling-stroke;pointer-events:none}
 .unobs{fill:url(#hatch);stroke:var(--unobs);stroke-width:1.2;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
 .lg-row .sw.hatch{background:repeating-linear-gradient(45deg, var(--unobs) 0 1.5px, var(--unobs-bg) 1.5px 4px);border-color:var(--unobs)}
+.ref-poly{fill:rgba(99,102,241,.06);stroke:#6366f1;stroke-width:1.5;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;pointer-events:none}
+.lg-row .sw.outline{background:rgba(99,102,241,.12);border:1.5px dashed #6366f1}
+.sev-hint{font-size:11px;color:var(--muted);padding:4px 2px 2px 2px;line-height:1.3}
 .fa{fill:var(--fa);fill-opacity:.32;stroke:var(--fa);stroke-width:1.8;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
 .pin{position:absolute;width:14px;height:14px;margin:-7px 0 0 -7px;border-radius:50%;border:2.5px solid var(--c);
   background:color-mix(in srgb, var(--c) 30%, #fff);box-shadow:0 0 0 2px rgba(255,255,255,.85),0 2px 6px rgba(0,0,0,.3);
@@ -516,7 +524,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
 <!-- ======================= LANDING ======================= -->
 <main class="hero" id="hero">
   <header class="nav">
-    <a class="logo" href="#" data-act="noop">Change<b>Intel</b></a>
+    <a class="logo" href="#" data-act="noop" title="T.R.A.C.E. (Terrain Analysis & Change Evaluation)">T.R.A.<b>C.E.</b></a>
     <nav class="nav-links" aria-label="Primary" id="navLinks"></nav>
     <div class="nav-actions">
       <button class="btn btn-login" data-act="bench" id="navF1"></button>
@@ -547,14 +555,14 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
   <header class="topbar">
     <button class="tb-brand" data-act="back" title="Back to globe">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M2.5 12h19M12 2.5c2.6 2.7 3.9 5.9 3.9 9.5s-1.3 6.8-3.9 9.5c-2.6-2.7-3.9-5.9-3.9-9.5S9.4 5.2 12 2.5z"/></svg>
-      <strong>Change<b>Intel</b></strong>
+      <strong>T.R.A.<b>C.E.</b></strong>
     </button>
     <span class="tb-sep"></span>
     <div class="tb-title"><div id="tbTitle"></div><div id="tbCoords"></div></div>
     <div class="seg" role="group" aria-label="Sector" id="sectorSeg"></div>
     <select class="city-pick" id="cityPick" aria-label="More OSCD cities" hidden></select>
     <div class="seg" role="group" aria-label="Detection engine">
-      <button data-act="mode:ai">ChangeIntel AI</button><button data-act="mode:naive">Naive NDVI</button>
+      <button data-act="mode:ai">T.R.A.C.E. AI</button><button data-act="mode:naive">Naive NDVI</button>
     </div>
     <button class="pill" data-act="bench">Benchmark</button>
   </header>
@@ -589,7 +597,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
       <div class="map" id="map" data-view="swipe">
         <div class="layer" id="layT1"><div class="world"><img id="imgT1" alt="Before imagery" draggable="false"></div></div>
         <div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
-        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern></defs><g id="unL"></g><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
+        <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern></defs><g id="unL"></g><g id="refL"></g><g id="faL"></g><g id="ftL"></g></svg><div id="pins"></div></div></div>
         <div class="curtain" id="curtain"><div class="knob ctl" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
@@ -671,7 +679,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
   <div class="dlg">
     <div class="dlg-h"><h2 id="benchH">LEVIR-CD benchmark</h2><button class="ibtn" data-act="bench-close" aria-label="Close">✕</button></div>
     <p id="benchP"></p>
-    <table><thead><tr><th>Metric</th><th class="num">Naive spectral</th><th class="num">ChangeIntel AI</th><th class="num">Change</th></tr></thead><tbody id="benchRows"></tbody></table>
+    <table><thead><tr><th>Metric</th><th class="num">Naive spectral</th><th class="num">T.R.A.C.E. AI</th><th class="num">Change</th></tr></thead><tbody id="benchRows"></tbody></table>
     <div class="note" id="benchNote"></div>
     <section id="stress" hidden>
       <div class="stress-h"><h3>Robustness stress test</h3>
@@ -682,12 +690,18 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
       <div class="note" id="stressNote"></div>
     </section>
     <section id="bObj" hidden><div class="stress-h"><h3>Missed changes: object recall by size</h3></div>
-      <p id="bObjP"></p><table><thead><tr><th>Object size</th><th class="num">Objects</th><th class="num">ChangeIntel</th><th class="num">Naive</th></tr></thead><tbody id="bObjRows"></tbody></table></section>
+      <p id="bObjP"></p><table><thead><tr><th>Object size</th><th class="num">Objects</th><th class="num">T.R.A.C.E.</th><th class="num">Naive</th></tr></thead><tbody id="bObjRows"></tbody></table></section>
     <section id="bCreep" hidden><div class="stress-h"><h3>Slow change: consecutive vs anchored comparison</h3></div>
       <p id="bCreepP"></p><div class="sleg" id="bCreepLeg"></div><div id="bCreepRows"></div><div class="note" id="bCreepNote"></div></section>
     <section id="bFar" hidden><div class="stress-h"><h3>False alarms per 100 km² of unchanged land</h3></div>
-      <p id="bFarP"></p><table><thead><tr><th>Dataset</th><th class="num">ChangeIntel</th><th class="num">Naive NDVI</th><th class="num">Index rules</th></tr></thead><tbody id="bFarRows"></tbody></table>
+      <p id="bFarP"></p><table><thead><tr><th>Dataset</th><th class="num">T.R.A.C.E.</th><th class="num">Naive NDVI</th><th class="num">Index rules</th></tr></thead><tbody id="bFarRows"></tbody></table>
       <div class="note" id="bFarNote"></div></section>
+    <section id="bEvent" hidden><div class="stress-h"><h3>Disaster event validation vs Copernicus EMS</h3></div>
+      <p id="bEventP"></p><table><thead><tr><th>Event</th><th class="num">Scope</th><th class="num">T.R.A.C.E. F1</th><th class="num">Naive NDVI</th><th class="num">Track B (urban)</th></tr></thead><tbody id="bEventRows"></tbody></table>
+      <div class="note" id="bEventNote"></div></section>
+    <section id="bTrackB" hidden><div class="stress-h"><h3>Track B: Sentinel-2 urban change (leave-one-city-out)</h3></div>
+      <p id="bTrackBP"></p><table><thead><tr><th>Evaluation fold</th><th class="num">F1-score</th><th class="num">Precision</th><th class="num">Recall</th><th class="num">Threshold</th></tr></thead><tbody id="bTrackBRows"></tbody></table>
+      <div class="note" id="bTrackBNote"></div></section>
     <p class="fine" id="bRun"></p>
   </div>
 </dialog>
@@ -777,7 +791,7 @@ const latLon = (b, x, y) => [b.n - y/100*(b.n-b.s), b.w + x/100*(b.e-b.w)];   //
 const fLat = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'N':'S'}`;
 const fLon = v => `${Math.abs(v).toFixed(5)}° ${v>=0?'E':'W'}`;
 
-const S = {th:KEYS[0], role:(() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), stF:'all', sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), q:'', sort:{k:'area', d:-1}, stage:'hero'};
+const S = {th:KEYS[0], role:(() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), stF:'all', sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), hideRef:false, q:'', sort:{k:'area', d:-1}, stage:'hero'};
 const sc = () => D.scenes[S.th];
 // creep & precursor polygons (multi-year series) join the detection list when their layer is on
 const creepFeats = () => (sc().creep && !S.hideCreep) ? sc().creep.features : [];
@@ -1104,19 +1118,27 @@ function renderKpis(){
   const fs = feats(), nv = sc().naive, naive = S.mode === 'naive';
   const sum = a => a.reduce((t, f) => t + f.area_sqm, 0), area = sum(fs);
   const crit = fs.filter(f => f.tier === 'Critical').length, high = fs.filter(f => f.tier === 'High').length;
+  const det = sc().detector || {name: 'BIT', benchmark: 'LEVIR-CD', f1: AI.f1_score};
+  const detVal = det.f1 != null ? pct(det.f1) : 'Validated';
+  const detFull = `${det.name} · ${det.benchmark}`;
+  const shortName = det.track === 'E'
+    ? (sc().event === 'wildfire' ? 'Burn dNBR ≥ 0.27' : 'Water MNDWI > 0')
+    : (det.track === 'B' ? 'Track B S2 MLP' : 'Track A BIT');
+  const shortBench = det.track === 'E' ? 'Copernicus EMS' : (det.benchmark || '').split(',')[0];
+  const detSub = `${shortName} · ${shortBench}`;
   const k = naive ? [
     ['Regions flagged', fmt(nv.regions), '', `|ΔNDVI| > ${nv.threshold} · no filtering`],
-    ['Area flagged', fmt(nv.area_sqm), 'm²', `${fmt(nv.area_sqm/area || 0, 1)}× ChangeIntel area`],
-    ['False alarms', fmt(nv.false_alarms.length), '', nv.reference === 'ground truth' ? 'off ground truth' : 'unconfirmed by ChangeIntel'],
-    ['False-alarm rate', pct(NV.false_alarm_rate), '', 'naive · LEVIR-CD'],
+    ['Area flagged', fmt(nv.area_sqm), 'm²', `${fmt(nv.area_sqm/area || 0, 1)}× T.R.A.C.E. area`],
+    ['False alarms', fmt(nv.false_alarms.length), '', nv.reference === 'ground truth' ? 'off ground truth' : 'unconfirmed by T.R.A.C.E.'],
+    ['Baseline method', 'Naive NDVI', '', 'Fixed threshold · no learning'],
   ] : [
     ['Detections', fs.length, fs.length === 1 ? 'polygon' : 'polygons', `vs ${fmt(nv.regions)} naive regions`],
     ['Changed area', fmt(area), 'm²', `${fmt(area/10000, 2)} ha, UTM metric` + (sc().unobservable?.pct > 0 ? ` · ${sc().unobservable.pct.toFixed(1)}% not observable` : '')],
     ['Priority sites', crit + high, '', `${crit} critical · ${high} high`],
-    ['False-alarm rate', pct(AI.false_alarm_rate), '', `vs ${pct(NV.false_alarm_rate)} naive · LEVIR-CD`],
+    ['Detector', detVal, det.f1 != null ? 'F1' : '', detSub, detFull],
   ];
-  $('#kpis').innerHTML = k.map(([l, v, u, s], i) =>
-    `<div class="kpi rise" style="--d:${i}"><div class="kpi-l">${l}</div><div class="kpi-v"${i === 3 || (naive && i === 2) ? ` style="color:${naive ? 'var(--fa)' : 'var(--forest)'}"` : ''}>${v}${u ? `<small>${u}</small>` : ''}</div><div class="kpi-s">${s}</div></div>`).join('');
+  $('#kpis').innerHTML = k.map(([l, v, u, s, full], i) =>
+    `<div class="kpi rise" style="--d:${i}"><div class="kpi-l">${l}</div><div class="kpi-v"${i === 3 || (naive && i === 2) ? ` style="color:${naive ? 'var(--fa)' : 'var(--forest)'}"` : ''}>${v}${u ? `<small>${u}</small>` : ''}</div><div class="kpi-s" title="${xmlEsc(full || s)}">${xmlEsc(s)}</div></div>`).join('');
 }
 function renderLegend(){
   const fs = feats(), fa = FA();
@@ -1131,7 +1153,11 @@ function renderLegend(){
   const u = sc().unobservable;
   if (u && u.pct > 0) h += `<label class="lg-row${S.hideUnobs ? ' off' : ''}"><input type="checkbox" data-layer="unobs"${S.hideUnobs ? '' : ' checked'}>
       <span class="sw hatch"></span>Unobservable<span class="n">${u.pct.toFixed(1)}%</span></label>`;
+  const ref = sc().reference;
+  if (ref && ref.polygons && ref.polygons.length) h += `<label class="lg-row${S.hideRef ? ' off' : ''}"><input type="checkbox" data-layer="ref"${S.hideRef ? '' : ' checked'}>
+      <span class="sw outline"></span>EMS reference outline<span class="n">${ref.polygons.length}</span></label>`;
   if (S.mode === 'naive') h += `<div class="lg-row fa"><span class="sw" style="--c:var(--fa);margin-left:23px"></span>Naive false alarms<span class="n">${fa.length}</span></div>`;
+  if (S.sev === 'disaster' && !sc().event) h += `<div class="sev-hint">Disaster mode on non-event sector: re-ranks priorities only</div>`;
   $('#legend').innerHTML = h;
 }
 function renderTable(){
@@ -1147,6 +1173,12 @@ function renderUnobs(){
   const u = sc().unobservable;
   $('#unL').innerHTML = u && !S.hideUnobs ? u.polygons.map(p => `<polygon class="unobs" data-un="1" points="${pts(p)}"/>`).join('') : '';
 }
+function renderRef(){
+  const ref = sc().reference;
+  const el = $('#refL');
+  if (!el) return;
+  el.innerHTML = ref && !S.hideRef ? ref.polygons.map(p => `<polygon class="ref-poly" points="${pts(p)}"/>`).join('') : '';
+}
 function renderNaive(){
   $('#faL').innerHTML = S.mode === 'naive' ? FA().map((fa, i) => `<polygon class="fa" data-fa="${i}" points="${pts(fa.pts)}"/>`).join('') : '';
 }
@@ -1154,7 +1186,7 @@ function faText(fa){
   const nv = sc().naive;
   const ref = nv.reference === 'ground truth'
     ? `${Math.round(fa.overlap*100)}% overlaps ground-truth change`
-    : `not flagged by ChangeIntel (${Math.round(fa.overlap*100)}% overlap) · no ground truth for this tile`;
+    : `not flagged by T.R.A.C.E. (${Math.round(fa.overlap*100)}% overlap) · no ground truth for this tile`;
   return `${fa.id} · ${SHORT[fa.type] || fa.type} · ${fmt(fa.area_sqm)} m² · ${ref}`;
 }
 function renderMap(){
@@ -1226,7 +1258,7 @@ function renderBanner(){
   $('#banner').innerHTML = `<b>Naive NDVI baseline:</b> |ΔNDVI| > ${nv.threshold} flags ${fmt(nv.regions)} regions (${fmt(nv.area_sqm)} m²). `
     + `${fmt(nv.false_alarms.length)} of them barely touch ${nv.reference} (<20% overlap) and are drawn dashed. `
     + `Benchmark false-alarm rate ${pct(NV.false_alarm_rate)} vs ${pct(AI.false_alarm_rate)}.`
-    + (nv.reference === 'ground truth' ? '' : ` <b>Note:</b> this tile has no usable ground truth, so naive regions are checked against ChangeIntel's own detections. Treat this view as a picture of baseline noise, not a measured accuracy score.`);
+    + (nv.reference === 'ground truth' ? '' : ` <b>Note:</b> this tile has no usable ground truth, so naive regions are checked against T.R.A.C.E.'s own detections. Treat this view as a picture of baseline noise, not a measured accuracy score.`);
 }
 const places = () => sc().georeferenced === false ? [] : (sc().places || []);
 const placeName = pl => pl[`name_${S.lang}`] || pl.name;
@@ -1259,7 +1291,7 @@ function renderLookup(){
     : l.far(placeName(pl), d)) + (pending ? l.pending(pending) : '');
   if (m <= NEAR_M) S.lk.nearest = i;
 }
-function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderUnobs(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderLookup(); renderBanner(); }
+function renderAll(){ renderHeader(); renderKpis(); renderLegend(); renderTable(); renderUnobs(); renderRef(); renderNaive(); renderMap(); renderInspector(); renderAdvisory(); renderLookup(); renderBanner(); }
 
 function select(i, flyTo){
   S.sel = i; renderMap(); renderInspector(); renderAdvisory();
@@ -1274,7 +1306,7 @@ function step(d){
 }
 
 async function loadTheater(th){
-  S.th = th; S.sev = sc().default_mode || 'encroachment'; applySev(); S.hidden.clear(); S.q = ''; $('#search').value = ''; S.lk = null; $('#lkIn').value = '';
+  S.th = th; S.sev = sc().default_mode || 'encroachment'; applySev(); S.hidden.clear(); S.hideRef = false; S.q = ''; $('#search').value = ''; S.lk = null; $('#lkIn').value = '';
   const fs = feats();
   fs.forEach(f => { const xs = f.pts.map(p => p[0]), ys = f.pts.map(p => p[1]);
     f._span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)); });
@@ -1303,7 +1335,7 @@ function capNote(f){
   const st = caseState(f), last = caseLog(f).filter(e => VERIFIED.has(e.to))[0];
   return VERIFIED.has(st)
     ? `Field-confirmed by ${last.role} on ${last.ts.slice(0, 10)}${last.note ? ` (${last.note})` : ''}; case state ${st}. Draft awaiting DDMA sign-off.`
-    : `Draft alert generated by ChangeIntel AI. Not yet field-verified (case state: ${st}). Awaiting official verification and sign-off by the District Disaster Management Authority (DDMA).`;
+    : `Draft alert generated by T.R.A.C.E. AI. Not yet field-verified (case state: ${st}). Awaiting official verification and sign-off by the District Disaster Management Authority (DDMA).`;
 }
 function capXml(f){
   const crit = f.tier === 'Critical', la = f.lat, lo = f.lon;
@@ -1312,10 +1344,16 @@ function capXml(f){
   const ring = f.ring.slice();
   const [a, z] = [ring[0], ring[ring.length - 1]];
   if (a[0] !== z[0] || a[1] !== z[1]) ring.push(a);
+  const ev = sc().event || 'encroachment';
+  const prof = (D.profiles && D.profiles[ev]) || {
+    cap_category: 'Env',
+    cap_event: 'Land-use change / possible encroachment',
+    instruction: 'Field officers to verify on site. Satellite encroachment flags are screening results: check against Development Plan and CRZ maps before any regulatory action.'
+  };
   return `<?xml version="1.0" encoding="UTF-8"?>
 <alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
   <identifier>IND-SACHET-${sent.slice(0, 10).replace(/-/g, '')}-${f.id}-${uid}</identifier>
-  <sender>ChangeIntel-SatelliteEngine@ndma.gov.in</sender>
+  <sender>TRACE-SatelliteEngine@ndma.gov.in</sender>
   <sent>${sent}</sent>
   <status>Draft</status>
   <msgType>Alert</msgType>
@@ -1324,14 +1362,14 @@ function capXml(f){
   <note>${xmlEsc(capNote(f))}</note>
   <info>
     <language>en-IN</language>
-    <category>Geo</category>
-    <event>Rapid Structural Change / Damage Anomaly</event>
+    <category>${xmlEsc(prof.cap_category)}</category>
+    <event>${xmlEsc(prof.cap_event)}</event>
     <urgency>${crit ? 'Immediate' : 'Expected'}</urgency>
     <severity>${crit ? 'Extreme' : 'Severe'}</severity>
     <certainty>Observed</certainty>
     <headline>${xmlEsc(`Satellite Change Alert: ${f.area_sqm} m² ${f.type} Detected`)}</headline>
     <description>${xmlEsc(`Bi-temporal satellite intelligence detected a change footprint of ${f.area_sqm} m² at (${la.toFixed(6)}, ${lo.toFixed(6)}) with confidence ${(f.magnitude*100).toFixed(1)}%. Classification: ${f.type}. ${f.summary}`)}</description>
-    <instruction>Field officers to verify on site. Satellite encroachment flags are screening results: check against Development Plan and CRZ maps before any regulatory action.</instruction>
+    <instruction>${xmlEsc(prof.instruction)}</instruction>
     <area>
       <areaDesc>${xmlEsc(`${sc().label}: footprint near (${la.toFixed(6)}, ${lo.toFixed(6)})`)}</areaDesc>
       <polygon>${ring.map(([y, x]) => `${y.toFixed(6)},${x.toFixed(6)}`).join(' ')}</polygon>
@@ -1353,13 +1391,13 @@ const DL = {
   cap: () => { const f = feats()[S.sel];
     if (caseState(f) === 'Dismissed') return toast(`${f.id} was dismissed as a false alarm: no alert drafted`);
     download(capXml(f), `sachet_cap_${S.th}_${f.id}.xml`, 'application/xml'); },
-  audit: () => download(JSON.stringify(audit, null, 1), 'changeintel_audit_log.json', 'application/json'),
+  audit: () => download(JSON.stringify(audit, null, 1), 'trace_audit_log.json', 'application/json'),
   verdicts: () => download(JSON.stringify(KEYS.flatMap(th => D.scenes[th].features.concat(D.scenes[th].creep ? D.scenes[th].creep.features : [])
       .map(f => [f, caseLog(f, th)]).filter(([, l]) => l.length && (VERIFIED.has(l[l.length - 1].to) || l[l.length - 1].to === 'Dismissed'))
       .map(([f, l]) => ({sector: th, id: f.id, verdict: l[l.length - 1].to === 'Dismissed' ? 'false_alarm' : 'confirmed',
         state: l[l.length - 1].to, decided_at: l[l.length - 1].ts, change_type: f.type, area_sqm: f.area_sqm, ring_latlon: f.ring}))), null, 1),
-    'changeintel_officer_verdicts.json', 'application/json'),
-  sitrep: () => download(bytes(D.files[S.th].sitrep), `ChangeIntel_SitRep_${S.th}.pdf`, 'application/pdf'),
+    'trace_officer_verdicts.json', 'application/json'),
+  sitrep: () => download(bytes(D.files[S.th].sitrep), `TRACE_SitRep_${S.th}.pdf`, 'application/pdf'),
   csv: () => download(csv(), `${S.th}_detections.csv`, 'text/csv'),
 };
 
@@ -1368,14 +1406,14 @@ const DL = {
    ============================================================ */
 document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
-  e.preventDefault();
+  if (el.tagName !== 'INPUT') e.preventDefault();
   const [k, v] = el.dataset.act.split(':');
   switch (k) {
     case 'fly': fly(v in D.scenes ? v : KEYS[0], 1); break;
     case 'back': if (S.stage === 'dash') fly(S.th, -1); break;
     case 'th': if (v !== S.th) { loadTheater(v).then(() => toast(`Loaded ${D.scenes[v].label}`)); } break;
     case 'mode': S.mode = v; renderHeader(); renderKpis(); renderLegend(); renderNaive(); break;
-    case 'sev': S.sev = v; applySev(); renderAll(); toast(`${SEV_MODES[v]} priorities: tiers re-ranked`); break;
+    case 'sev': S.sev = v; applySev(); renderAll(); toast(v === 'disaster' && !sc().event ? 'Disaster mode: re-ranks existing detections (non-event sector)' : `${SEV_MODES[v]} priorities: tiers re-ranked`); break;
     case 'lang': S.lang = v; renderHeader(); renderAdvisory(); renderLookup(); break;
     case 'view': S.view = v; renderHeader(); setCurtain(S.curtain); break;
     case 'zoom': { const r = map.getBoundingClientRect();
@@ -1412,6 +1450,7 @@ $('#tbody').addEventListener('pointerover', e => {
   if (tr) $(`.poly[data-i="${tr.dataset.row}"]`)?.classList.add('hl');
 });
 $('#legend').addEventListener('change', e => {
+  if (e.target.dataset.layer === 'ref') { S.hideRef = !e.target.checked; renderLegend(); renderRef(); return; }
   if (e.target.dataset.layer === 'unobs') { S.hideUnobs = !e.target.checked; renderLegend(); renderUnobs(); return; }
   if (e.target.dataset.layer === 'creep') { S.hideCreep = !e.target.checked; S.sel = Math.min(S.sel, feats().length - 1); renderAll(); return; }
   const t = e.target.dataset.tier; if (!t) return;
@@ -1463,7 +1502,7 @@ let rT; addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() 
 })();
 
 /* stress test chart: T2 perturbed, ground truth unchanged */
-const ST = D.stress, ST_M = [['ai_raw','ChangeIntel','var(--forest)'],['ai_stable','+ stable-pixel normalisation','var(--ocean)'],['ai_hist_matched','+ histogram matching','var(--minor)'],['naive','Naive spectral','var(--fa)']]
+const ST = D.stress, ST_M = [['ai_raw','T.R.A.C.E.','var(--forest)'],['ai_stable','+ stable-pixel normalisation','var(--ocean)'],['ai_hist_matched','+ histogram matching','var(--minor)'],['naive','Naive spectral','var(--fa)']]
   .filter(([k]) => !ST || k in ST.conditions[0]);
 function renderStress(metric){
   $$('[data-act^="stress:"]').forEach(b => b.setAttribute('aria-pressed', b.dataset.act === `stress:${metric}`));
@@ -1489,7 +1528,7 @@ if (ST) {
   if (B.objects) {
     const a = B.objects.ai, n = B.objects.naive;
     $('#bObj').hidden = false;
-    $('#bObjP').textContent = `A ground-truth object counts as found when detections cover at least half of it. ${B.dataset}, ${fmt(a.gt_objects)} objects. Object precision (IoU > 0.5): ChangeIntel ${r(a.precision_iou50)}, naive ${r(n.precision_iou50)}.`;
+    $('#bObjP').textContent = `A ground-truth object counts as found when detections cover at least half of it. ${B.dataset}, ${fmt(a.gt_objects)} objects. Object precision (IoU > 0.5): T.R.A.C.E. ${r(a.precision_iou50)}, naive ${r(n.precision_iou50)}.`;
     $('#bObjRows').innerHTML = a.recall_by_size.map((b, i) => `<tr><td>${b.bin}</td><td class="num mono">${fmt(b.objects)}</td><td class="num mono win">${r(b.recall_hit50)}</td><td class="num mono">${r(n.recall_by_size[i].recall_hit50)}</td></tr>`).join('')
       + `<tr><td><b>All</b></td><td class="num mono">${fmt(a.gt_objects)}</td><td class="num mono win">${r(a.recall_hit50)}</td><td class="num mono">${r(n.recall_hit50)}</td></tr>`;
   }
@@ -1504,7 +1543,7 @@ if (ST) {
     $('#bCreepNote').innerHTML = `<b>Objects found at any step, consecutive comparison:</b> ${r(C.consecutive_any_step_recall_hit50)}. <b>Anchored, final step:</b> ${r(C.anchored_final_recall_hit50)}. This is why the Sentinel-2 creep detector compares the whole series, not neighbouring years.`;
   }
   const rows = [];
-  // in-domain (0.5 m) the low ChangeIntel figure is a win; at 10 m it is low because the model barely fires, so it is starred
+  // in-domain (0.5 m) the low T.R.A.C.E. figure is a win; at 10 m it is low because the model barely fires, so it is starred
   const far = (label, d, note, inDomain) => d && rows.push(`<tr><td>${label}${note ? `<br><small>${note}</small>` : ''}</td>${['ai', 'naive', 'spectral'].map((k, i) =>
     `<td class="num mono${i === 0 && inDomain ? ' win' : ''}">${d[k] == null ? '–' : d[k].toFixed(2)}${i === 0 && !inDomain ? '*' : ''}</td>`).join('')}</tr>`);
   far(B.dataset, B.false_alarm_km2_per_100km2, '0.5 m aerial', true);
@@ -1515,9 +1554,29 @@ if (ST) {
     $('#bFar').hidden = false;
     $('#bFarP').textContent = 'Area wrongly flagged, measured on land the ground truth marks unchanged. Index rules are the training-free Sentinel-2 detector built from the change-type indices.';
     $('#bFarRows').innerHTML = rows.join('');
-    if (B.oscd) $('#bFarNote').innerHTML = `<b>* Not a win:</b> ChangeIntel's model was trained on 0.5 m aerial images and barely fires on 10 m Sentinel-2 (OSCD F1 ${r(B.oscd.changeintel_ai_engine.f1_score)}; naive ${r(B.oscd.naive_spectral_baseline.f1_score)}, index rules ${r(B.oscd.spectral_index_rules.f1_score)}), so it also flags almost nothing on unchanged land. Use LEVIR-CD for its accuracy. The seasonal row shows what naive NDVI does across a monsoon-to-dry-season pair.`;
+    if (B.oscd) $('#bFarNote').innerHTML = `<b>* Not a win:</b> T.R.A.C.E.'s model was trained on 0.5 m aerial images and barely fires on 10 m Sentinel-2 (OSCD F1 ${r(B.oscd.changeintel_ai_engine.f1_score)}; naive ${r(B.oscd.naive_spectral_baseline.f1_score)}, index rules ${r(B.oscd.spectral_index_rules.f1_score)}), so it also flags almost nothing on unchanged land. Use LEVIR-CD for its accuracy. The seasonal row shows what naive NDVI does across a monsoon-to-dry-season pair.`;
   }
   if (B.runtime) $('#bRun').textContent = `Runtime: ${B.runtime.s_per_km2} s per km² at 0.5 m (${B.runtime.megapixels_per_s} megapixels/s, model inference on Apple M5 Max). At 10 m that is ${(B.runtime.s_per_km2 / 400).toFixed(4)} s per km².`;
+  if (B.event_validation) {
+    $('#bEvent').hidden = false;
+    $('#bEventP').textContent = 'Validation of event-specific spectral detectors against Copernicus Emergency Management Service (EMS) satellite delineations on final vectorized polygons within observable reference bounds.';
+    $('#bEventRows').innerHTML = Object.entries(B.event_validation).map(([k, ev]) => {
+      const ci = ev.changeintel, nv = ev.naive_ndvi, tb = ev.track_b_urban;
+      return `<tr><td><b>${ev.event}</b></td><td class="num mono">${ev.scope_km2} km²</td><td class="num mono win">${r(ci.f1_score)} <small>(P ${r(ci.precision)}, R ${r(ci.recall)})</small></td><td class="num mono">${r(nv.f1_score)}</td><td class="num mono">${tb ? r(tb.f1_score) : '–'}</td></tr>`;
+    }).join('');
+    $('#bEventNote').innerHTML = '<b>Method:</b> Event detectors use fixed literature index thresholds (burn severity dNBR &ge; 0.27 for wildfire, new water MNDWI &gt; 0 for flood) without event tuning. Naive NDVI detects wildfire well but lacks severity classification; Track B is built for urban change and does not transfer to disasters.';
+  }
+  if (B.track_b_loco) {
+    const tb = B.track_b_loco, p = tb.pooled;
+    $('#bTrackB').hidden = false;
+    $('#bTrackBP').textContent = `Leave-one-city-out (LOCO) over 14 labelled OSCD cities at 10 m Sentinel-2. The model scoring a city never saw that city during training. Contrast with BIT (0.5 m aerial), which scores F1 0.00 on 10 m OSCD.`;
+    const rowsTb = tb.per_city.map(c => {
+      const cName = (D.scenes && D.scenes[c.city]) ? (D.scenes[c.city].nav || D.scenes[c.city].place.split(',')[0]) : (c.city.charAt(0).toUpperCase() + c.city.slice(1));
+      return `<tr><td>${cName}</td><td class="num mono win">${r(c.f1_score)}</td><td class="num mono">${r(c.precision)}</td><td class="num mono">${r(c.recall)}</td><td class="num mono">${c.threshold.toFixed(3)}</td></tr>`;
+    }).join('') + `<tr><td><b>Pooled (${tb.cities} cities)</b></td><td class="num mono win"><b>${r(p.f1_score)}</b></td><td class="num mono"><b>${r(p.precision)}</b></td><td class="num mono"><b>${r(p.recall)}</b></td><td class="num mono"><b>–</b></td></tr>`;
+    $('#bTrackBRows').innerHTML = rowsTb;
+    $('#bTrackBNote').innerHTML = `<b>Triage performance:</b> Operating threshold favours precision (F0.5). With polygon cleanup (${tb.objects.cleanup}), object precision reaches <b>${pct(tb.objects.object_precision)}</b> with <b>${tb.objects.polygons_per_city}</b> polygons/city and ${pct(tb.objects.objects_found)} of labelled objects found. False alarms: <b>${tb.false_alarm_km2_per_100km2} km² per 100 km²</b>.`;
+  }
 })();
 
 /* benchmark dialog + hero meta from data */
@@ -1528,7 +1587,7 @@ if (ST) {
     return `<tr><td><b>${l}</b></td><td class="num mono${lower ? ' lose' : ''}">${pct(NV[k])}</td><td class="num mono win">${pct(AI[k])}</td><td class="num mono win">${rel > 0 ? '+' : ''}${rel.toFixed(1)}%</td></tr>`;
   }).join('');
   $('#benchP').textContent = `Fine-tuned Bitemporal Transformer (BIT) vs. a naive spectral-difference baseline, evaluated on the ${B.dataset || "LEVIR-CD test split"} (${B.evaluation_samples_count} image pairs, pixel counts pooled).`;
-  $('#benchNote').innerHTML = `<b>Takeaway:</b> naive spectral differencing mistakes seasonal vegetation and sun-angle shifts for change (${pct(NV.false_alarm_rate)} false alarms). ChangeIntel cuts false alarms by <b>${B.false_alarm_reduction_percentage}%</b> to ${pct(AI.false_alarm_rate)}.`;
+  $('#benchNote').innerHTML = `<b>Takeaway:</b> naive spectral differencing mistakes seasonal vegetation and sun-angle shifts for change (${pct(NV.false_alarm_rate)} false alarms). T.R.A.C.E. cuts false alarms by <b>${B.false_alarm_reduction_percentage}%</b> to ${pct(AI.false_alarm_rate)}.`;
   $('#heroMeta').innerHTML = `LEVIR-CD F1 <i>${pct(AI.f1_score)}</i> · false alarms <i>${pct(AI.false_alarm_rate)}</i> vs ${pct(NV.false_alarm_rate)} naive`;
 })();
 </script>

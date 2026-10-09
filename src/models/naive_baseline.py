@@ -30,6 +30,8 @@ class NaiveBaselineComparator:
         Computes visible Green-Red difference index for RGB imagery without NIR:
         (Green - Red) / (Green + Red)
         """
+        if rgb_img.shape[0] < 2:
+            return np.zeros((rgb_img.shape[1], rgb_img.shape[2]), dtype=np.float32)
         r = rgb_img[0].astype(np.float32)
         g = rgb_img[1].astype(np.float32)
         denom = g + r
@@ -62,17 +64,23 @@ class NaiveBaselineComparator:
             ndvi1 = cls.compute_ndvi(img_t1[0], img_t1[3])
             ndvi2 = cls.compute_ndvi(img_t2[0], img_t2[3])
             diff_map = np.abs(ndvi2 - ndvi1)
-        else:
+        elif img_t1.shape[0] >= 2 and img_t2.shape[0] >= 2:
             # Fall back to RGB pseudo-NDVI or euclidean color distance
             p_ndvi1 = cls.compute_pseudo_ndvi_rgb(img_t1)
             p_ndvi2 = cls.compute_pseudo_ndvi_rgb(img_t2)
             # Combine spectral index drift with intensity drift
             spec_diff = np.abs(p_ndvi2 - p_ndvi1)
             intensity_diff = np.mean(
-                np.abs(img_t2.astype(np.float32) - img_t1.astype(np.float32)) / 255.0,
+                np.abs(img_t2.astype(np.float32) - img_t1.astype(np.float32)) / (255.0 if img_t1.max() > 1.0 else 1.0),
                 axis=0
             )
             diff_map = (spec_diff + intensity_diff) / 2.0
+        else:
+            # 1-band grayscale / SAR
+            diff_map = np.abs(img_t2[0].astype(np.float32) - img_t1[0].astype(np.float32))
+            diff_max = diff_map.max()
+            if diff_max > 1.0:
+                diff_map = diff_map / (255.0 if diff_max <= 255.0 else diff_max)
 
         # Normalize difference to [0, 1]
         diff_norm = np.clip(diff_map / (diff_map.max() + 1e-6), 0.0, 1.0)

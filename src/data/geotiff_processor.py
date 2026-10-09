@@ -136,8 +136,15 @@ class GeoTIFFProcessor:
 
     @staticmethod
     def to_uint8_rgb(img_01: np.ndarray) -> np.ndarray:
-        """Converts (3, H, W) float [0, 1] to (H, W, 3) uint8 [0, 255]."""
-        scaled = np.clip(img_01 * 255.0, 0, 255).astype(np.uint8)
+        """Converts (C, H, W) or (H, W) float [0, 1] to (H, W, 3) uint8 [0, 255]."""
+        arr = img_01.copy()
+        if arr.ndim == 2:
+            arr = np.stack([arr] * 3, axis=0)
+        elif arr.shape[0] == 1:
+            arr = np.repeat(arr[:1], 3, axis=0)
+        elif arr.shape[0] == 2:
+            arr = np.concatenate([arr[:2], arr[:1]], axis=0)
+        scaled = np.clip(arr * 255.0, 0, 255).astype(np.uint8)
         return np.transpose(scaled[:3], (1, 2, 0))
 
     @staticmethod

@@ -2,7 +2,7 @@
 evaluate.py - Quantitative Evaluation & Benchmark Metrics Panel (Stretch Feature #14).
 
 Computes IoU, Precision, Recall, F1-Score, and False Alarm Rate (FAR) across
-the LEVIR-CD test split, comparing the ChangeIntel AI Engine vs Naive Baseline.
+the LEVIR-CD test split, comparing the T.R.A.C.E. AI Engine vs Naive Baseline.
 """
 
 import os
@@ -224,6 +224,10 @@ def seasonal_no_change(engine: TiledInferenceEngine, prefix: str = "data/raw/s2/
     flagged = {"ai": engine.run_inference(t1, t2) > 0.5,
                "naive": NaiveBaselineComparator.compute_naive_change(*refl, threshold=0.18)[1].astype(bool),
                "spectral": spectral_rule_change(*refl)}
+    from src.models import track_b
+    tb = track_b.change_probability(*refl)
+    if tb is not None:
+        flagged["track_b"] = track_b.cleaned(tb[0] >= tb[1])
     area_km2 = t1.shape[1] * t1.shape[2] * px / 1e6
     return {"dates": dates, "area_km2": round(area_km2, 1),
             "flagged_km2_per_100km2": {k: round(v.sum() * px / 1e6 / area_km2 * 100, 2) for k, v in flagged.items()}}
@@ -251,10 +255,52 @@ def run_benchmark_evaluation(data_dir: str = "data/geotiff", output_path: str = 
     if cities:
         o = _evaluate(oscd_samples(cities), engine, pixel_area=100.0, spectral=True)
         summary["oscd"] = {"cities": [s["sample"] for s in o["per_sample"]], **{k: v for k, v in o.items() if k != "per_sample"}}
+        if os.path.exists("data/outputs/track_b_metrics.json"):
+            with open("data/outputs/track_b_metrics.json") as f:
+                tb_met = json.load(f)
+            summary["track_b_loco"] = tb_met
+            summary["oscd"]["track_b"] = tb_met.get("pooled")
+            if "false_alarm_km2_per_100km2" in summary["oscd"]:
+                summary["oscd"]["false_alarm_km2_per_100km2"]["track_b"] = tb_met.get("false_alarm_km2_per_100km2")
     oscd = list(geotiff_samples(data_dir, "mumbai_t1_pre.tif"))
     if oscd:
         summary["oscd_mumbai"] = {k: v for k, v in _evaluate(oscd, engine, pixel_area=100.0).items() if k != "per_sample"}
     summary["seasonal_no_change"] = seasonal_no_change(engine)
+
+    # Event validation against Copernicus EMS (Evros wildfire & Trimmu flood)
+    from src.geospatial import events
+    from src.models import track_b
+    event_val = {}
+    for area, ref_info in [
+        ("evros_fire", {"event": "Evros wildfire (EMSR686)", "src": "data/geotiff/evros_fire"}),
+        ("trimmu_flood", {"event": "Trimmu flood AOI05 (EMSR838)", "src": "data/geotiff/trimmu_flood"}),
+    ]:
+        prefix = ref_info["src"]
+        if os.path.exists(f"{prefix}_ground_truth.tif") and os.path.exists(f"{prefix}_reference_aoi.tif"):
+            refl = GeoTIFFProcessor.load_reflectance(prefix)
+            if refl:
+                r1, r2 = refl
+                with rasterio.open(f"{prefix}_ground_truth.tif") as sg, rasterio.open(f"{prefix}_reference_aoi.tif") as sa:
+                    gt = sg.read(1) > 0
+                    scope = sa.read(1) > 0
+                cloud = GeoTIFFProcessor.load_cloud_mask(prefix)
+                unobs = (r1 == 0).all(axis=0) | (r2 == 0).all(axis=0)
+                if cloud is not None:
+                    unobs |= cloud
+                scope_obs = scope & ~unobs
+                ev_type = "wildfire" if "fire" in area else "flood"
+                pred_ev = (events.SCORERS[ev_type](r1, r2) >= 0.5) & ~unobs
+                _, naive_mask = NaiveBaselineComparator.compute_naive_change(*refl, threshold=0.18)
+                tbp = track_b.change_probability(r1, r2)
+                event_val[area] = {
+                    "event": ref_info["event"],
+                    "scope_km2": round(float(scope_obs.sum()) * 100.0 / 1e6, 1),
+                    "changeintel": events.validate(pred_ev, gt, scope_obs),
+                    "naive_ndvi": events.validate(naive_mask.astype(bool), gt, scope_obs),
+                    "track_b_urban": events.validate(track_b.cleaned(tbp[0] >= tbp[1]), gt, scope_obs) if tbp else None
+                }
+    if event_val:
+        summary["event_validation"] = event_val
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
@@ -264,7 +310,7 @@ def run_benchmark_evaluation(data_dir: str = "data/geotiff", output_path: str = 
     ob, rt, cs = summary["objects"]["ai"], summary["runtime"], summary["creep_vs_sudden"]
     print("=" * 72)
     print(f"{dataset}: {summary['evaluation_samples_count']} pairs, {summary['area_km2']} km² (pooled)")
-    print(f"  ChangeIntel AI      -> F1 {ai['f1_score']}, IoU {ai['iou']}, FAR {ai['false_alarm_rate']}")
+    print(f"  T.R.A.C.E. AI       -> F1 {ai['f1_score']}, IoU {ai['iou']}, FAR {ai['false_alarm_rate']}")
     print(f"  ...+ hist matching  -> F1 {raw['f1_score']}, IoU {raw['iou']}, FAR {raw['false_alarm_rate']}")
     print(f"  Naive Baseline      -> F1 {nv['f1_score']}, IoU {nv['iou']}, FAR {nv['false_alarm_rate']}")
     print(f"  Objects: {ob['gt_objects']} | recall@IoU.5 {ob['recall_iou50']} | hit {ob['recall_hit50']} | precision {ob['precision_iou50']}")
@@ -273,9 +319,17 @@ def run_benchmark_evaluation(data_dir: str = "data/geotiff", output_path: str = 
     print(f"  Creep ({cs['steps']} steps): consecutive-pair recall {cs['consecutive_any_step_recall_hit50']} vs anchored {cs['anchored_final_recall_hit50']}")
     if "oscd" in summary:
         o = summary["oscd"]
-        print(f"OSCD {len(o['cities'])} cities (out of domain for BIT): AI F1 {o['changeintel_ai_engine']['f1_score']} | "
+        tb_f1 = summary.get("track_b_loco", {}).get("pooled", {}).get("f1_score", "N/A")
+        print(f"OSCD {len(o['cities'])} cities: Track B LOCO F1 {tb_f1} | BIT (out of domain) F1 {o['changeintel_ai_engine']['f1_score']} | "
               f"naive F1 {o['naive_spectral_baseline']['f1_score']} | spectral rules F1 {o['spectral_index_rules']['f1_score']}")
         print(f"  false alarms km²/100km²: {o['false_alarm_km2_per_100km2']}")
+    if "event_validation" in summary:
+        print("Copernicus EMS Event Validation:")
+        for ev_k, ev_v in summary["event_validation"].items():
+            print(f"  {ev_v['event']}: T.R.A.C.E. F1 {ev_v['changeintel']['f1_score']} ")
+                  f"(P {ev_v['changeintel']['precision']}, R {ev_v['changeintel']['recall']}) | "
+                  f"Naive NDVI F1 {ev_v['naive_ndvi']['f1_score']} | "
+                  f"Track B F1 {ev_v['track_b_urban']['f1_score'] if ev_v['track_b_urban'] else 'N/A'}")
     if summary["seasonal_no_change"]:
         print(f"Seasonal no-change pair, flagged km²/100km²: {summary['seasonal_no_change']['flagged_km2_per_100km2']}")
     print("=" * 72)

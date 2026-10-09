@@ -1,0 +1,20 @@
+{
+ "pair": [
+  {
+   "id": "S2B_42RYV_20250618_0_L2A",
+   "date": "2025-06-18",
+   "cloud": 0.002552
+  },
+  {
+   "id": "S2A_42RYV_20250903_0_L2A",
+   "date": "2025-09-03",
+   "cloud": 23.131098
+  }
+ ],
+ "reference": {
+  "source": "Copernicus EMS EMSR838 AOI05 DEL_MONIT04 (Sentinel-1, 2025-09-02)",
+  "event": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_observedEventA_v1.json",
+  "aoi": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_areaOfInterestA_v1.json",
+  "depth": "data/raw/ems/EMSR838_AOI05_DEL_MONIT04_v1/EMSR838_AOI05_DEL_MONIT04_floodDepthA_v1.json"
+ }
+}
