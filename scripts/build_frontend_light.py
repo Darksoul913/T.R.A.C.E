@@ -761,16 +761,9 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
         <div class="ctl tr"><span class="chip">After<span class="mono" id="d2"></span></span></div>
-        <div class="ctl tc" style="display:flex;align-items:center;gap:8px">
-          <div class="seg" role="group" aria-label="Imagery view">
-            <button data-act="view:before">Before</button><button data-act="view:swipe">Swipe</button><button data-act="view:after">After</button>
-          </div>
-          <div class="seg" style="display:flex;align-items:center;gap:6px;padding:3px 10px;background:var(--card);border:1px solid var(--line);border-radius:100px;font-size:11px;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,.06)">
-            <span style="color:var(--muted);white-space:nowrap">Fill</span>
-            <input type="range" id="fillDirect" min="0" max="100" value="35" aria-label="Polygon fill opacity" style="width:70px;cursor:pointer">
-            <span class="mono" id="fillVal" style="font-size:10px;min-width:24px;color:var(--ink)">35%</span>
-          </div>
-        </div>
+        <div class="ctl tc"><div class="seg" role="group" aria-label="Imagery view">
+          <button data-act="view:before">Before</button><button data-act="view:swipe">Swipe</button><button data-act="view:after">After</button>
+        </div></div>
         <div class="banner" id="banner"></div>
         <div class="ctl bl">
           <div class="scalebar"><i id="sbBar"></i><span id="sbTxt"></span></div>
@@ -2141,14 +2134,11 @@ $('#search').addEventListener('input', e => { S.q = e.target.value.trim().toLowe
 function setPolyFill(val) {
   const v = Math.max(0, Math.min(100, parseInt(val, 10) || 0));
   $('#vec').style.setProperty('--fill', (v / 100).toFixed(2));
-  const fd = $('#fillDirect'), f = $('#fill'), fv = $('#fillVal'), fp = $('#fillPopVal');
-  if (fd && fd.value != v) fd.value = v;
+  const f = $('#fill'), fp = $('#fillPopVal');
   if (f && f.value != v) f.value = v;
-  if (fv) fv.textContent = v + '%';
   if (fp) fp.textContent = v + '%';
 }
 $('#fill')?.addEventListener('input', e => setPolyFill(e.target.value));
-$('#fillDirect')?.addEventListener('input', e => setPolyFill(e.target.value));
 ['#bench', '#impact'].forEach(id => $(id).addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.close(); }));
 document.addEventListener('click', e => {   // close the layers popover from outside
   const p = $('#layPop');
