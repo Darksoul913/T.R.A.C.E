@@ -86,6 +86,23 @@ done
 log_banner "T.R.A.C.E. Satellite Change Intelligence Engine Setup"
 
 # ------------------------------------------------------------------------------
+# Storage Optimization: Disable cache storage to prevent disk exhaustion on EC2
+# ------------------------------------------------------------------------------
+export PIP_NO_CACHE_DIR=1
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+
+get_disk_space() {
+    if command -v df &>/dev/null; then
+        df -h . | awk 'NR==2 {print $4 " free (" $5 " used of " $2 ")"}'
+    else
+        echo "unknown"
+    fi
+}
+
+log_info "Storage Optimization: Disabled pip cache storage (PIP_NO_CACHE_DIR=1)."
+log_info "Available disk space: $(get_disk_space)"
+
+# ------------------------------------------------------------------------------
 # 1. OS & Architecture Detection
 # ------------------------------------------------------------------------------
 log_info "Detecting Operating System and Architecture..."
@@ -145,7 +162,10 @@ if [ "$SKIP_SYS_DEPS" = false ]; then
                 curl \
                 git \
                 htop
-            log_success "System libraries installed successfully via apt."
+            log_info "Purging apt cache to reclaim disk space..."
+            $SUDO apt-get clean
+            $SUDO rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+            log_success "System libraries installed successfully via apt (cache cleared)."
         fi
     elif [ "$DISTRO" = "amzn" ] || [ "$DISTRO" = "rhel" ] || [ "$DISTRO" = "centos" ] || [ "$DISTRO" = "fedora" ]; then
         log_info "Checking/installing Amazon Linux / RHEL system dependencies..."
@@ -169,7 +189,9 @@ if [ "$SKIP_SYS_DEPS" = false ]; then
                 curl \
                 git \
                 htop
-            log_success "System libraries installed successfully via dnf."
+            log_info "Purging dnf cache to reclaim disk space..."
+            $SUDO dnf clean all 2>/dev/null || true
+            log_success "System libraries installed successfully via dnf (cache cleared)."
         fi
     fi
 else
@@ -219,8 +241,13 @@ log_info "Activating virtual environment..."
 # shellcheck source=/dev/null
 source .venv/bin/activate
 
-log_info "Upgrading pip, setuptools, and wheel..."
-pip install --upgrade pip setuptools wheel --quiet 2>/dev/null || log_warn "Could not upgrade pip/setuptools/wheel (offline or network restricted). Proceeding with current versions."
+# Purge any stale pip cache and temp wheels from prior runs
+log_info "Purging stale pip caches to maximize available disk storage..."
+pip cache purge --quiet 2>/dev/null || true
+rm -rf ~/.cache/pip /tmp/pip-* /tmp/pip-ephem-wheel-cache-* /tmp/pip-req-build-* 2>/dev/null || true
+
+log_info "Upgrading pip, setuptools, and wheel (without caching wheels)..."
+pip install --no-cache-dir --upgrade pip setuptools wheel --quiet 2>/dev/null || log_warn "Could not upgrade pip/setuptools/wheel (offline or network restricted). Proceeding with current versions."
 
 # ------------------------------------------------------------------------------
 # 5. Hardware Acceleration & PyTorch Installation
@@ -240,22 +267,28 @@ if python3 -c "import torch" &>/dev/null; then
     log_info "PyTorch already installed ($TORCH_VER). Skipping re-download."
 else
     if [ "$HAS_CUDA" = true ]; then
-        log_info "Installing PyTorch with CUDA 12.1 acceleration..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+        log_info "Installing PyTorch with CUDA 12.1 acceleration (streamed without wheel caching)..."
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu121
     elif [ "$OS_TYPE" = "Darwin" ]; then
-        log_info "Installing PyTorch for macOS (Apple Silicon MPS / CPU)..."
-        pip install torch torchvision
+        log_info "Installing PyTorch for macOS (Apple Silicon MPS / CPU, without wheel caching)..."
+        pip install --no-cache-dir torch torchvision
     else
-        log_info "Installing PyTorch for Linux CPU (Optimized for EC2 t3/c5 instances)..."
-        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        log_info "Installing PyTorch for Linux CPU (streamed without wheel caching, optimized for EC2)..."
+        pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
     fi
 fi
 
 # ------------------------------------------------------------------------------
 # 6. Install Python Dependencies
 # ------------------------------------------------------------------------------
-log_info "Installing geospatial, machine learning, and web dependencies from requirements.txt..."
-pip install -r requirements.txt || log_warn "pip install reported warnings or network limits. Verifying modules during sanity check..."
+log_info "Installing geospatial, machine learning, and web dependencies from requirements.txt (no-cache-dir)..."
+pip install --no-cache-dir -r requirements.txt || log_warn "pip install reported warnings or network limits. Verifying modules during sanity check..."
+
+# Final purge of any temp files created during build
+log_info "Cleaning up temporary build and pip files..."
+pip cache purge --quiet 2>/dev/null || true
+rm -rf ~/.cache/pip /tmp/pip-* /tmp/pip-ephem-wheel-cache-* /tmp/pip-req-build-* 2>/dev/null || true
+log_info "Storage status after packages: $(get_disk_space)"
 
 # ------------------------------------------------------------------------------
 # 7. Environment Configuration (.env)
