@@ -491,7 +491,11 @@ if [ "$INSTALL_NGINX" = true ]; then
         if ! command -v nginx &>/dev/null; then
             log_info "Installing Nginx..."
             if [ "$DISTRO" = "ubuntu" ] || [ "$DISTRO" = "debian" ]; then
+                # Package lists were purged after the system-deps step (disk saving), so refresh them first
+                $SUDO apt-get update -y
                 $SUDO apt-get install -y nginx
+                $SUDO apt-get clean
+                $SUDO rm -rf /var/lib/apt/lists/* 2>/dev/null || true
             else
                 $SUDO dnf install -y nginx
             fi
