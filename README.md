@@ -37,11 +37,11 @@ T.R.A.C.E. routes imagery through specialized detection engines depending on sen
 7. **Clean Geospatial Vectorization**: Morphological opening/closing, Polsby-Popper compactness filtering (removes boundary slivers), Shapely simplification, and local UTM reprojection for true geodesic metric area ($m^2$).
 8. **Multi-Factor Severity Scoring**: Dynamic formula: Area (resolution-aware) × Magnitude × Type Weight × Exposure, in Encroachment and Disaster modes, banded Critical / High / Medium / Low.
 9. **Multi-Format GIS Export**: Direct download of OGC GeoPackage (`.gpkg` with spatial index) and GeoJSON (`.geojson`).
-10. **Interactive Split-View Swipe Web Application**: Standalone light console (`web/index.html`) with curtain swipe, EMS reference outlines, attention views over the case list, the Change-to-Action Card and time travel (see Product Experience below), plus Streamlit console (`web/app.py`).
+10. **Interactive Split-View Swipe Web Application**: Standalone light console (`web/index.html`) with curtain swipe, EMS reference outlines, attention views over the case list, the Change-to-Action Card, full-tile Mission Overview, Pixel Inspector, and time travel (see Product Experience below), plus Streamlit console (`web/app.py`).
 
 #### Headline Features (The Winning Edge)
 11. **OSM Asset Exposure & Encroachment Overlay**: Automated Geofabrik extract matching (`osm_extract_for()`) across all 28 global sectors. 500 m critical asset buffer (hospitals, schools) and conservation screening (CRZ 50 m tidal water, DCPR nalas, reserved forests).
-12. **Auto-Generated 1-Page Situation Report (SitRep PDF)**: Executive briefing PDF with sector-tailored emergency directives and detector accuracy notes ready for DDMA / District Magistrates.
+12. **Auto-Generated Situation Reports (1-Page SitRep & 11-Part Comprehensive Dossier)**: Executive briefing PDF (`src/exporters/sitrep_pdf.py`) with sector emergency directives, plus full 11-part auditable technical dossier PDF (`src/exporters/comprehensive_report.py`) with polygon-by-polygon evidence tables ready for DDMA, municipal commissioners, and technical auditors.
 
 #### Stretch Goals (Validated in Evaluation)
 13. **Robustness Stress-Testing Module**: Perturbation analysis under brightness ($\pm 15/30\%$), cast shadows, and misregistration (`src/models/stress_test.py`).
@@ -51,6 +51,9 @@ T.R.A.C.E. routes imagery through specialized detection engines depending on sen
 - **Copernicus EMS Disaster Impact Validation**: Dedicated disaster detectors for wildfire burn severity ($dNBR \ge 0.27$, Evros EMSR686, F1 **$91.8\%$**) and flood inundation ($MNDWI > 0$, Trimmu EMSR838, F1 **$76.4\%$**) validated against official EMS delineations.
 - **Missed-Encroachment Defence**: Multi-year Sentinel-2 trend analysis (Theil–Sen slope), precursor detection (cleared plots, new tracks), and recall-first thresholds inside protected zones.
 - **Officer Case Workflow**: Append-only decision history: New → Under review → Field verification → Confirmed → Reported → Resolved (or Dismissed), with who decided what, when and why; CAP alerts gated on verification, and citizen lookup showing verified cases only.
+- **Pixel-Level Intelligence Inspector**: Click any raster pixel to inspect Row/Col, Lat/Lon, ground footprint ($m^2$), raw/normalized T1/T2 values, per-band spectral shifts, continuous detector probability, and 5-level explainable reasoning with 11×11 neighborhood comparison.
+- **6-Layer Geospatial Visualization Suite**: Toggle T1 Pre-Event, T2 Post-Event, Continuous Probability Heatmap, Binary Change Mask, Cleaned Morphological Mask, and Vector Polygons with dynamic fill opacity.
+- **Hollow Selected Polygon Inspection**: Selected polygon renders with 100% hollow/zero fill (`fill: none !important; fill-opacity: 0 !important;`) so satellite pixels inside the boundary remain completely unobscured for before/after visual audit.
 
 #### Context and Temporal Intelligence (core, feeds every case)
 - **Scene Passport & Comparability Score (#18)** — `src/geospatial/passport.py`: per pair, scene IDs, acquisition times and sun angles from the STAC item (or the NOAA solar equations at the 10:30 Sentinel-2 overpass for OSCD tiles, checked against STAC to 0.2°), IMD season and crop stage, misregistration, cloud share, processing baselines and SHA-256 checksums. A 0–100 score ranks how far the two images can be compared. Below 60 the learned detectors' threshold is raised, except inside recall-first zones; `scripts/eval_comparability.py` measures that trade-off against OSCD ground truth (on the labelled low-comparability cities precision rises 0.41 → 0.54 and recall falls 0.046 → 0.028).
@@ -58,13 +61,13 @@ T.R.A.C.E. routes imagery through specialized detection engines depending on sen
 - **Precursor detection by robust trend** — `src/geospatial/creep.py` now judges cleared plots and tracks by a Theil–Sen NDVI trend across the yearly series, not first-vs-last year. Endpoint comparisons were reading January greenness against March browning as clearing.
 - **Grounding validator (#14)** — `src/exporters/grounding.py` and `web/caselogic.js` (same rule): every number in generated text must be a value from the case facts at the precision it is written with, or the sentence is dropped. The SitRep PDF now carries a data-limitations section built from the same facts.
 
-## 🧭 Product Experience: From Detection to Decision (#41–#48, #31)
+## 🧭 Product Experience: From Detection to Decision (#41–#48, #31, #51–#54)
 Every case answers four questions on one screen: what changed, why it matters, how reliable it is, and what to do next.
 
 | # | Feature | What the officer gets |
 |---|---|---|
-| 41 | **Mission overview** | Opens where the globe lands: a one-line situation sentence and five figures (changes, high priority, awaiting verification, uncertain, not observable). Each figure opens the matching case list. |
-| 42 | **Interactive change evidence** | Picking a case flies to it and puts it under the swipe divider. Its own changed pixels light up inside the outline and the rest of the tile dims. |
+| 41 | **Full-Tile Mission Overview** | Opens across the entire satellite tile by default whenever a location or sector is selected (full-bleed frosted glassmorphic backdrop with centered layout, rounded hover cards, and one-click dismiss). Five figures (changes, high priority, awaiting verification, uncertain, not observable) open the matching case list. |
+| 42 | **Interactive change evidence** | Picking a case flies to it and centers it under the swipe divider. Selected polygon renders with 100% hollow/zero fill (`fill: none`) so raw before/after pixels inside remain completely unobscured. |
 | 43 | **Change-to-Action Card** | What changed (plain words, area, first-seen date), why it matters (assets, buffer flags, a reason line from the score factors), how reliable (signal vs threshold, comparability, cloud, seasonal check) and a rule-based next step. Spectral indices, score breakdown, detector and Scene Passport sit behind *Show details*. |
 | 44 | **Verification actions & history** | Confirm change, Mark as false alarm, Request field inspection, Assign case (to BMC ward designations or a named officer); DDMA steps follow. Role-gated, noted, undoable (undo appends a reversal), exportable. |
 | 45 | **"Explain this change" copilot** | Six suggested questions answered offline from the case facts. Free text goes to `/api/explain` (Claude `claude-opus-5-5`, structured JSON, refusal fallback) when the console is served by the FastAPI app. Facts and possible explanations are always shown separately, and any sentence with a number not in the facts is removed. |
@@ -72,6 +75,10 @@ Every case answers four questions on one screen: what changed, why it matters, h
 | 47 | **Time-travel map** | A date strip over the images that exist: Mumbai 2017–2026 dry-season frames; Evros and Trimmu before, after and three recovery revisits. The selected case's index trend shows first-visible and pair markers. |
 | 31 | **Field verification** | Field officers get Assigned to me, Navigate to site, site photos (stored on the device in IndexedDB), on-site confirm/dismiss and an offline outbox. It syncs to `/api/field/sync` when online, or travels as a field pack (.json). |
 | 48 | **Team progress** | Cases reviewed, false alarms dismissed, field inspections completed, cases resolved; decisions per day; oldest open cases and median days open by zone and team; CSV for administrators. Process measures only. |
+| 51 | **Pixel Intelligence Inspector** | Click any raster pixel to inspect Row/Col, Lat/Lon, ground footprint ($m^2$), T1/T2 spectral shifts, detector confidence score, and 5-level reasoning hierarchy with 11×11 neighborhood comparison. Crosshair marker follows pan/zoom and hides when closed. |
+| 52 | **Multi-Layer Raster Suite** | Toggles 6 distinct visualization layers (T1, T2, Continuous Probability Heatmap, Binary Change Mask, Cleaned Mask, Final Polygons) with responsive fill opacity controls in the Layers popover. |
+| 53 | **Interactive Pair Upload Modal** | Pre-inspection modal supporting GeoTIFF, PNG, and JPG. Displays image metadata, dimensions, bands, GSD resolution, and CRS bounds check with side-by-side preview and live async processing progress panel. |
+| 54 | **11-Part Dossier Report Generator** | Generates professional multi-page executive & technical PDF dossiers (ReportLab) or HTML reports containing 12 auditable evidence questions per polygon, civic asset proximity, and legal setback screening. |
 
 ---
 
@@ -216,15 +223,16 @@ T.R.A.C.E/
 │   ├── data/                 # GeoTIFF I/O, phase correlation harmonisation, and dataset loaders
 │   ├── models/               # BIT Transformer (Track A), Track B S2 MLP, Naive baseline, and Tiled inference
 │   ├── geospatial/           # Vectorization, spectral indices, events, creep, OSM overlay, passport (#18), temporal (#19)
-│   ├── exporters/            # GeoPackage, GeoJSON, SACHET CAP XML, SitRep PDF, grounding validator (#14)
-│   └── server/app.py         # FastAPI: upload-and-analyse, /api/explain copilot, /api/field/sync
+│   ├── exporters/            # GeoPackage, GeoJSON, SACHET CAP XML, SitRep PDF, comprehensive dossier PDF, grounding validator
+│   └── server/app.py         # FastAPI: upload-and-analyse, /api/explain copilot, /api/field/sync, /api/report
 ├── web/
-│   ├── index.html            # Standalone single-page mission control console (zero external assets)
+│   ├── index.html            # Standalone single-page mission control console (zero external assets, inlined)
 │   ├── caselogic.js          # Case facts, card sentences, uncertainty rule, offline copilot + validator (inlined)
 │   └── scenes.json           # Serialized feature vectors, metadata, and benchmarks across 28 sectors
 └── scripts/
     ├── build_scenes.py       # Full pipeline runner across all 28 sectors (Track A, Track B, Event engines)
-    ├── build_frontend_light.py # Single-file inlining generator for web/index.html
+    ├── build_frontend_light.py # Base UI template generator for light console
+    ├── build_full_app.py     # Production compiler for full console with pixel inspector & upload modal
     ├── fetch_s2.py           # Earth Search STAC Sentinel-2 L2A harvester (pair, series, recovery, --only parts)
     └── eval_comparability.py # Measures the comparability threshold tightening against OSCD ground truth
 ```
