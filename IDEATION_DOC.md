@@ -1,4 +1,4 @@
-# GEOAI 04 — ChangeIntel: Bi-Temporal Satellite Change Intelligence Engine
+# GEOAI 04 — T.R.A.C.E. 🛰️ (Terrain Analysis & Change Evaluation) — Bi-Temporal Satellite Change Intelligence Engine
 ## Definitive System Specification & Engineering Blueprint
 
 ---
@@ -10,7 +10,7 @@ Satellite data providers deliver pre- and post-event imagery within hours of an 
 - **The "Raster Dump" Disconnect**: Academic models output unindexed 2D pixel masks rather than localized, GIS-ready vector polygons that can be ingested into emergency dispatch or QGIS/ArcGIS workflows.
 - **The 15-Year Planning Blindspot**: Under India's Disaster Management framework, District Disaster Management Plans (DDMPs) must be updated annually, yet they still rely on outdated 2011 Census baselines. Fast-growing peri-urban sprawl and informal settlements in high-risk floodplains remain completely unmapped.
 
-**ChangeIntel** is an end-to-end, automated change-intelligence engine that accepts co-registered bi-temporal orthorectified GeoTIFF imagery and outputs **decision-grade, false-alarm-filtered vector polygons** with **true geodesic metric surface areas ($m^2$)** categorized into **severity tiers**.
+**T.R.A.C.E.** is an automated, end-to-end change-intelligence engine that accepts co-registered bi-temporal orthorectified GeoTIFF imagery and outputs **decision-grade, false-alarm-filtered vector polygons** with **true geodesic metric surface areas ($m^2$)** categorized into **severity tiers**.
 
 The system addresses both:
 1. **Rapid Event Impact (Hours $\Delta T$)**: Immediate post-disaster damage mapping, false-alarm suppression, SACHET-compatible CAP Alert XML drafts, and citizen ground-truth verification.
@@ -58,7 +58,7 @@ The system addresses both:
 ##### Feature 2: Naive NDVI-Difference Baseline Comparator
 - **Functionality**: Computes standard normalized difference change:
   $$\Delta\text{NDVI} = \text{NDVI}_{T_2} - \text{NDVI}_{T_1} = \frac{\text{NIR}_2 - \text{Red}_2}{\text{NIR}_2 + \text{Red}_2} - \frac{\text{NIR}_1 - \text{Red}_1}{\text{NIR}_1 + \text{Red}_1}$$
-- **Role in Demo**: Provides a live UI toggle comparing *"Naive Baseline vs. ChangeIntel Siamese Engine"*. Demonstrates visually how naive thresholding drowns in false alarms across drying lawns, whereas our deep model isolates genuine structural/landcover changes.
+- **Role in Demo**: Provides a live UI toggle comparing *"Naive Baseline vs. T.R.A.C.E. AI Engine"*. Demonstrates visually how naive thresholding drowns in false alarms across drying lawns, whereas our deep model isolates genuine structural/landcover changes.
 
 ##### Feature 3: Tiled Sliding-Window Inference with Overlap
 - **Functionality**: Ingests arbitrarily large GeoTIFF tiles (e.g., $1024 \times 1024$, $2048 \times 2048$, or full scene extents).
