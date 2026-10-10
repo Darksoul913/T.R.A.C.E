@@ -261,7 +261,27 @@ js_code_addition = """
 let activeAnalysisId = null;
 let activeSessionId = null;
 let pixelMode = false;
-let currentPixelMarker = null;
+let currentPixelPos = null;
+
+function updateCrosshairPosition() {
+  const ch = $('#crosshairMarker');
+  if (!ch) return;
+  if (!pixelMode || !currentPixelPos) {
+    ch.style.display = 'none';
+    return;
+  }
+  const screenX = currentPixelPos.x * V.s + V.x;
+  const screenY = currentPixelPos.y * V.s + V.y;
+  ch.style.display = 'block';
+  ch.style.left = screenX + 'px';
+  ch.style.top = screenY + 'px';
+}
+
+function hideCrosshair() {
+  currentPixelPos = null;
+  const ch = $('#crosshairMarker');
+  if (ch) ch.style.display = 'none';
+}
 
 // Modal triggers
 function openUploadModal() {
@@ -275,6 +295,7 @@ function openPixelModal() {
 }
 function closePixelModal() {
   $('#pixelDlg').close();
+  if (!pixelMode) hideCrosshair();
 }
 
 // Preset Loader
@@ -498,7 +519,10 @@ function togglePixelMode() {
   $('#btnTopPixel').style.background = pixelMode ? 'var(--forest)' : '';
   $('#btnTopPixel').style.color = pixelMode ? '#fff' : '';
   document.body.classList.toggle('pixel-mode-active', pixelMode);
-  toast(pixelMode ? 'Pixel Inspector active: click any location on the map.' : 'Pixel Inspector disabled.');
+  if (!pixelMode) {
+    hideCrosshair();
+  }
+  toast(pixelMode ? 'Pixel Inspector active: click any location on the tile.' : 'Pixel Inspector disabled.');
 }
 
 async function inspectPixelAt(worldX, worldY) {
@@ -1013,9 +1037,15 @@ async function generatePolygonReport() {
   downloadPolygonClientDossier(f);
 }
 
-// Hook map click for pixel inspector
+// Hook map click for pixel inspector - strictly on the satellite tile only
 map.addEventListener('click', e => {
   if (!pixelMode) return;
+
+  // Ignore clicks on ANY UI controls, buttons, sliders, knobs, dialogs, popovers, banners, etc.
+  if (e.target.closest('button, input, select, textarea, label, a, .ctl, .knob, .banner, .scalebar, .tip, .lay-pop, .overview, dialog, .toast, .vbtn, .abtn, .zbtn, .seg, .chip')) {
+    return;
+  }
+
   const r = map.getBoundingClientRect();
   const clickX = e.clientX - r.left;
   const clickY = e.clientY - r.top;
@@ -1023,16 +1053,22 @@ map.addEventListener('click', e => {
   const worldX = (clickX - V.x) / V.s;
   const worldY = (clickY - V.y) / V.s;
 
-  // Move crosshair marker
-  const ch = $('#crosshairMarker');
-  if (ch) {
-    ch.style.display = 'block';
-    ch.style.left = clickX + 'px';
-    ch.style.top = clickY + 'px';
+  // Must be strictly inside the satellite tile bounds [0..V.iw, 0..V.ih]
+  if (worldX < 0 || worldX > V.iw || worldY < 0 || worldY > V.ih) {
+    return;
   }
 
+  currentPixelPos = { x: worldX, y: worldY };
+  updateCrosshairPosition();
   inspectPixelAt(worldX, worldY);
 });
+
+// Hook applyView to keep crosshair marker pinned to exact pixel coordinates on pan and zoom
+const _origApplyView = applyView;
+applyView = function(anim) {
+  _origApplyView(anim);
+  updateCrosshairPosition();
+};
 
 // Hook polygon selection to load 12 questions and evidence table
 const origSelect = select;
@@ -1052,9 +1088,10 @@ setCurtain = function(p) {
   });
 };
 
-// Hook loadTheater to refresh raster layers for the active theater
+// Hook loadTheater to refresh raster layers for the active theater and clear stale pixel marker
 const _origLoadTheater = loadTheater;
 loadTheater = async function(th) {
+  hideCrosshair();
   await _origLoadTheater(th);
   renderBundledRasterLayers();
   updateRasterLayerVisibility();
