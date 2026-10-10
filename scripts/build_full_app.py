@@ -77,6 +77,12 @@ extra_css = """
 .pixel-reason-box { border-left: 3px solid var(--forest); padding: 6px 10px; background: var(--card-2); margin-bottom: 6px; border-radius: 0 8px 8px 0; font-size: 11.5px; }
 .pixel-reason-box b { color: var(--forest); }
 .pixel-mode-active #map { cursor: crosshair !important; }
+/* Selected polygon: 100% hollow with zero fill so before/after satellite pixels inside are completely clear */
+.poly.sel { stroke-width: 3.2 !important; fill: none !important; fill-opacity: 0 !important; }
+.poly.sel:hover, .poly.sel.hl { fill-opacity: 0 !important; }
+/* Perfectly centered curtain divider knob */
+.curtain .knob { display: flex !important; justify-content: center !important; align-items: center !important; padding: 0 !important; margin: 0 !important; }
+.curtain .knob svg { display: block !important; margin: auto !important; }
 """
 
 # Insert extra CSS before </style>

@@ -409,7 +409,8 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 .spark{display:block;width:100%;height:28px;overflow:visible}
 .spark polyline{fill:none;stroke:var(--clay);stroke-width:1.6;vector-effect:non-scaling-stroke}
 .spark-l{display:flex;justify-content:space-between;font:10px var(--mono);color:var(--muted);margin-top:2px}
-.poly.sel{stroke-width:3;fill-opacity:calc(var(--fill,.35) + .2)}
+.poly.sel{stroke-width:3.2;fill:none !important;fill-opacity:0 !important}
+.poly.sel:hover,.poly.sel.hl{fill-opacity:0 !important}
 .poly.sel.wide{fill-opacity:0}   /* a tile-spanning case: outline only, so its imagery stays readable */
 .halo{fill:none;stroke:#fff;stroke-width:7;stroke-opacity:.9;vector-effect:non-scaling-stroke;pointer-events:none}
 .unobs{fill:url(#hatch);stroke:var(--unobs);stroke-width:1.2;vector-effect:non-scaling-stroke;pointer-events:visiblePainted;cursor:help}
@@ -429,8 +430,9 @@ td .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:v
 .curtain{position:absolute;top:0;bottom:0;left:50%;width:0;z-index:4}
 .curtain::before{content:"";position:absolute;top:0;bottom:0;left:-1px;width:2px;background:#fff;box-shadow:0 0 0 1px rgba(30,38,32,.25),0 0 12px rgba(0,0,0,.25)}
 .knob{position:absolute;top:50%;left:0;transform:translate(-50%,-50%);width:36px;height:36px;border-radius:50%;background:var(--card);
-  border:1px solid var(--line-2);box-shadow:0 4px 14px rgba(30,38,32,.25);display:grid;place-items:center;cursor:ew-resize;touch-action:none}
+  border:1px solid var(--line-2);box-shadow:0 4px 14px rgba(30,38,32,.25);display:flex !important;justify-content:center !important;align-items:center !important;padding:0 !important;margin:0 !important;cursor:ew-resize;touch-action:none;z-index:6}
 .knob:focus-visible{border-radius:50%}
+.knob svg{display:block;margin:auto;pointer-events:none}
 .map[data-view="before"] .curtain,.map[data-view="after"] .curtain{display:none}
 .map[data-view="before"] #layT2{opacity:0}
 
@@ -757,8 +759,8 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
         <div class="layer" id="layT1"><div class="world"><img id="imgT1" alt="Before imagery" draggable="false"></div></div>
         <div class="layer" id="layT2"><div class="world"><img id="imgT2" alt="After imagery" draggable="false"></div></div>
         <div class="layer"><div class="world" id="vecWorld"><svg id="vec" viewBox="0 0 100 100" preserveAspectRatio="none"><defs><pattern id="hatch" width="1.4" height="1.4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.4" height="1.4" fill="var(--unobs-bg)"/><line x1="0" y1="0" x2="0" y2="1.4" stroke="var(--unobs)" stroke-width=".45"/></pattern><clipPath id="selClip" clipPathUnits="userSpaceOnUse"><polygon id="selClipP" points=""/></clipPath></defs><g id="unL"></g><g id="refL"></g><g id="faL"></g><path id="spot" fill-rule="evenodd" d=""/><g id="ftL"></g><image id="heatImg" x="0" y="0" width="100" height="100" preserveAspectRatio="none" clip-path="url(#selClip)"/></svg><div id="pins"></div></div></div>
-        <div class="curtain" id="curtain"><div class="knob ctl" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
+        <div class="curtain" id="curtain"><div class="knob" id="knob" role="slider" tabindex="0" aria-label="Before / after divider" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6-6 6 6 6M15 6l6 6-6 6"/></svg></div></div>
         <div class="ctl tl"><span class="chip">Before<span class="mono" id="d1"></span></span></div>
         <div class="ctl tr"><span class="chip">After<span class="mono" id="d2"></span></span></div>
         <div class="ctl tc"><div class="seg" role="group" aria-label="Imagery view">
@@ -972,7 +974,7 @@ const ROLES = ['Analyst','Field officer','DDMA'];
 const PROFILE = store.get('ci-profile', null) || {role: (() => { try { return localStorage.getItem('ci-role') || 'Analyst'; } catch (e) { return 'Analyst'; } })(), name: ''};
 if (!ROLES.includes(PROFILE.role)) PROFILE.role = 'Analyst';
 const S = {th:KEYS[0], sev:'encroachment', sel:0, mode:'ai', lang:'en', view:'swipe', hidden:new Set(), hideRef:false, q:'',
-  av:'matters', stage:'hero', tt:null, spot:true, heat:true, seen:new Set()};
+  av:'matters', stage:'hero', tt:null, spot:true, heat:false, seen:new Set()};
 const sc = () => D.scenes[S.th];
 // creep & precursor polygons (multi-year series) join the case list when their layer is on
 const creepFeats = () => (sc().creep && !S.hideCreep) ? sc().creep.features : [];
