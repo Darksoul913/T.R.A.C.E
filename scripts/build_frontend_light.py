@@ -312,12 +312,17 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .mfig[aria-pressed="true"]{border-color:var(--forest);box-shadow:inset 0 0 0 1px var(--forest)}
 .mfig.static{cursor:default}.mfig.static:hover{background:var(--card);border-color:var(--line)}
 
-/* overview, shown where the globe lands */
-.overview{position:absolute;z-index:8;left:14px;top:14px;bottom:14px;width:min(430px, calc(100% - 28px));overflow:auto;
-  background:color-mix(in srgb, var(--card) 94%, transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
-  border:1px solid var(--line-2);border-radius:18px;padding:22px 22px 18px;box-shadow:0 24px 60px rgba(30,38,32,.22);cursor:default;
-  display:flex;flex-direction:column}
+/* overview, covering the entire tile block */
+.overview{position:absolute;z-index:10;inset:0;width:100%;height:100%;overflow-y:auto;overflow-x:hidden;
+  background:rgba(251,248,242,.96);-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
+  border-radius:14px;padding:26px 30px 22px;box-shadow:none;cursor:default;
+  display:flex;flex-direction:column;align-items:center;box-sizing:border-box}
 .overview[hidden]{display:none}
+.ov-inner{width:100%;max-width:560px;display:flex;flex-direction:column;flex:1;min-height:min-content}
+.ov-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.ov-close{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:var(--card-2);
+  color:var(--ink-2);display:grid;place-items:center;cursor:pointer;flex:none;transition:background .15s ease,color .15s ease}
+.ov-close:hover{background:var(--card);color:var(--ink);border-color:var(--line-2)}
 .ov-place{font-size:13px;font-weight:600;color:var(--ink-2)}
 .ov-dates{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
 .ov-sit{margin:16px 0 14px;font-size:24px;line-height:1.22;font-weight:700;letter-spacing:-.015em;color:var(--ink);text-wrap:balance}
@@ -663,7 +668,7 @@ dialog::backdrop{background:rgba(30,38,32,.35);-webkit-backdrop-filter:blur(4px)
   .tb-ctl .analyst{display:none}
   .hint{display:none}
   .tl .mono,.tr .mono{display:none}
-  .overview{left:8px;right:8px;top:8px;bottom:8px;width:auto;padding:18px 16px}
+  .overview{inset:0;padding:18px 16px}
   .ov-sit{font-size:21px}
   .ov-row b{font-size:28px}
   .acts .abtn,.field .abtn,.vbtn,.case{min-height:44px}
@@ -1198,7 +1203,7 @@ async function fly(th, dir){
 
   const finishIn = () => {
     dash.classList.add('on'); S.stage = 'dash';
-    showOverview(false);  // default view does not overlap overview over tile
+    showOverview(true);  // show overview by default covering the tile block
     setTimeout(() => { tile.style.opacity = 0; Globe.show(false); cv.style.filter = ''; cv.style.opacity = ''; }, 460);
     flying = false;
   };
@@ -1457,7 +1462,16 @@ function renderOverview(){
   const lead = ev ? `${areaShort(s.area)} affected between ${g.dates[0]} and ${g.dates[1]}.` : `${s.n} change${s.n === 1 ? '' : 's'} between ${g.dates[0]} and ${g.dates[1]}.`;
   const tail = s.matters ? ` ${s.matters} need${s.matters === 1 ? 's' : ''} a decision first.` : ' Nothing needs a decision right now.';
   const row = (d, v, c, label, sub, act) => `<li><${act ? `button class="ov-row" data-act="${act}"` : 'div class="ov-row static"'} style="--d:${d}"><b${c ? ` style="--c:${c}"` : ''}>${v}</b><span>${label}<small>${sub}</small></span>${act ? '<em>Show</em>' : '<em></em>'}</${act ? 'button' : 'div'}></li>`;
-  el.innerHTML = `<div class="ov-place">${xmlEsc(g.place)}</div><div class="ov-dates">${xmlEsc(g.sensor)} · ${g.dates[0]} → ${g.dates[1]}</div>
+  el.innerHTML = `<div class="ov-inner">
+    <div class="ov-head">
+      <div>
+        <div class="ov-place">${xmlEsc(g.place)}</div>
+        <div class="ov-dates">${xmlEsc(g.sensor)} · ${g.dates[0]} → ${g.dates[1]}</div>
+      </div>
+      <button class="ov-close" data-act="ov:close" aria-label="Close overview" title="Explore the map">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
     <h2 class="ov-sit" id="ovSit">${lead}${tail}</h2>
     <ul class="ov-rows">
       ${row(0, s.n, null, 'changes detected', `${areaShort(s.area)} in total${s.merged ? ` · ${s.merged} fragments and repeats folded into their cases` : ''}`, 'ov:all')}
@@ -1467,7 +1481,8 @@ function renderOverview(){
       ${row(4, `${fmt(s.unobs, 1)}%`, 'var(--unobs)', 'not observable', 'cloud, shadow or no data: never counted as no change', null)}
     </ul>
     <div class="ov-acts"><button class="abtn primary" data-act="ov:matters">Start with what matters</button><button class="abtn" data-act="ov:close">Explore the map</button></div>
-    <label class="ov-area">Area <select id="ovArea" aria-label="Choose an area">${KEYS.map(k => `<option value="${k}"${k === S.th ? ' selected' : ''}>${xmlEsc(city(k))} · ${xmlEsc(D.scenes[k].place)}</option>`).join('')}</select></label>`;
+    <label class="ov-area">Area <select id="ovArea" aria-label="Choose an area">${KEYS.map(k => `<option value="${k}"${k === S.th ? ' selected' : ''}>${xmlEsc(city(k))} · ${xmlEsc(D.scenes[k].place)}</option>`).join('')}</select></label>
+  </div>`;
 }
 function showOverview(on){
   const el = $('#overview');
@@ -1901,6 +1916,7 @@ async function loadTheater(th){
   V.iw = t1.naturalWidth || 100; V.ih = t1.naturalHeight || 100;
   worlds.forEach(w => { w.style.width = V.iw + 'px'; w.style.height = V.ih + 'px'; });
   renderAll(); fitView(false); setCurtain(50);
+  if (S.stage === 'dash') showOverview(true);
 }
 
 /* ============================================================
@@ -2057,7 +2073,7 @@ document.addEventListener('click', e => {
   switch (k) {
     case 'fly': fly(v in D.scenes ? v : KEYS[0], 1); break;
     case 'back': if (S.stage === 'dash') { showOverview(false); fly(S.th, -1); } break;
-    case 'th': if (v !== S.th) { loadTheater(v).then(() => { showOverview(false); }); } break;
+    case 'th': if (v !== S.th) { loadTheater(v).then(() => { showOverview(true); }); } break;
     case 'mode': S.mode = v; renderHeader(); renderMission(); renderLegend(); renderNaive(); renderMap(); renderTT(); break;
     case 'sev': S.sev = v; applySev(); renderAll(); toast(v === 'disaster' && !sc().event ? 'Disaster mode re-ranks the existing changes (not an event area)' : `Ranked for ${SEV_MODES[v].toLowerCase()} work`); break;
     case 'lang': S.lang = v; renderHeader(); renderAdvisory(); renderLookup(); break;
@@ -2119,7 +2135,7 @@ document.addEventListener('change', e => {
   if (e.target.id === 'role') { PROFILE.role = e.target.value; store.set('ci-profile', PROFILE); renderCard(); renderViews(); toast(`Acting as ${PROFILE.role}`); }
   if (e.target.id === 'actor') { PROFILE.name = e.target.value.trim().slice(0, 60); store.set('ci-profile', PROFILE); renderViews(); }
   if (e.target.id === 'asSel') { $('#asOther').hidden = e.target.value !== '__other'; if (e.target.value === '__other') $('#asOther').focus(); }
-  if (e.target.id === 'ovArea' && e.target.value !== S.th) loadTheater(e.target.value).then(() => showOverview(false));
+  if (e.target.id === 'ovArea' && e.target.value !== S.th) loadTheater(e.target.value).then(() => showOverview(true));
 });
 document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'asOther') { e.preventDefault(); doAssign(); } });
 $('#photoIn').addEventListener('change', e => { addPhoto(e.target.files[0]); e.target.value = ''; });
@@ -2175,7 +2191,7 @@ Sync.probe();
   if (MORE.length) {
     $('#cityPick').hidden = false;
     $('#cityPick').innerHTML = `<option value="">More cities (${MORE.length})</option>` + MORE.map(k => `<option value="${k}">${city(k)}</option>`).join('');
-    $('#cityPick').addEventListener('change', e => { const k = e.target.value; if (k && k !== S.th) loadTheater(k).then(() => { renderHeader(); toast(`Loaded ${D.scenes[k].label}`); }); });
+    $('#cityPick').addEventListener('change', e => { const k = e.target.value; if (k && k !== S.th) loadTheater(k).then(() => { renderHeader(); toast(`Loaded ${D.scenes[k].label}`); showOverview(true); }); });
   }
   $('#ctas').innerHTML = KEYS.slice(0, 2).map((k, i) =>
     `<button class="btn btn-lg ${i ? 'btn-ghost' : 'btn-primary'}" data-act="fly:${k}">${i ? `${city(k)} tile` : `Zoom into ${city(k)}`}${arw}</button>`).join('');
