@@ -325,16 +325,23 @@ html.anim.go .ctas .btn-ghost{animation:pillIn .70s var(--e-reveal) .97s both}
 .ov-close:hover{background:var(--card);color:var(--ink);border-color:var(--line-2)}
 .ov-place{font-size:13px;font-weight:600;color:var(--ink-2)}
 .ov-dates{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:2px}
-.ov-sit{margin:16px 0 14px;font-size:24px;line-height:1.22;font-weight:700;letter-spacing:-.015em;color:var(--ink);text-wrap:balance}
-.ov-rows{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
-.ov-row{display:grid;grid-template-columns:76px 1fr auto;align-items:baseline;gap:10px;width:100%;border:0;border-bottom:1px solid var(--line);
-  background:none;padding:11px 2px;text-align:left;cursor:pointer;font:inherit}
-.ov-row:hover{background:color-mix(in srgb, var(--forest) 5%, transparent)}
-.ov-row b{font-size:32px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;color:var(--c,var(--ink))}
+.ov-rows{list-style:none;margin:6px -12px 0;padding:4px 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:3px}
+.ov-row{display:grid;grid-template-columns:82px 1fr auto;align-items:center;gap:14px;width:100%;border:1px solid transparent;
+  border-radius:12px;background:none;padding:10px 14px;text-align:left;cursor:pointer;font:inherit;
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,transform .12s ease}
+.ov-row:hover{background:color-mix(in srgb, var(--forest) 8%, transparent);border-color:color-mix(in srgb, var(--forest) 14%, transparent);
+  box-shadow:0 2px 10px rgba(30,38,32,.05)}
+.ov-row:active{transform:scale(.995)}
+.ov-row b{font-size:30px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums;line-height:1;color:var(--c,var(--ink))}
 .ov-row span{font-size:14px;font-weight:600;color:var(--ink)}
 .ov-row small{display:block;font-size:11.5px;font-weight:500;color:var(--muted);margin-top:2px}
-.ov-row em{font-style:normal;font-size:12px;font-weight:600;color:var(--ocean)}
-.ov-row.static{cursor:default}.ov-row.static:hover{background:none}
+.ov-row em{font-style:normal;font-size:11.5px;font-weight:600;color:var(--ocean);display:inline-flex;align-items:center;
+  gap:4px;padding:4px 10px;border-radius:99px;background:color-mix(in srgb, var(--ocean) 8%, transparent);
+  border:1px solid color-mix(in srgb, var(--ocean) 18%, transparent);transition:all .18s ease}
+.ov-row:hover em{background:var(--ocean);color:#fff;border-color:var(--ocean);box-shadow:0 2px 6px rgba(43,107,133,.25)}
+.ov-row em:empty{display:none}
+.ov-row.static{cursor:default}
+.ov-row.static:hover{background:none;border-color:transparent;box-shadow:none}
 .ov-acts{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
 .ov-acts .abtn{flex:1;min-width:150px;padding:11px 12px;font-size:13px}
 .ov-area{margin-top:auto;padding-top:14px;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
@@ -1461,7 +1468,7 @@ function renderOverview(){
   const g = sc(), s = situation(), ev = !!g.event;
   const lead = ev ? `${areaShort(s.area)} affected between ${g.dates[0]} and ${g.dates[1]}.` : `${s.n} change${s.n === 1 ? '' : 's'} between ${g.dates[0]} and ${g.dates[1]}.`;
   const tail = s.matters ? ` ${s.matters} need${s.matters === 1 ? 's' : ''} a decision first.` : ' Nothing needs a decision right now.';
-  const row = (d, v, c, label, sub, act) => `<li><${act ? `button class="ov-row" data-act="${act}"` : 'div class="ov-row static"'} style="--d:${d}"><b${c ? ` style="--c:${c}"` : ''}>${v}</b><span>${label}<small>${sub}</small></span>${act ? '<em>Show</em>' : '<em></em>'}</${act ? 'button' : 'div'}></li>`;
+  const row = (d, v, c, label, sub, act) => `<li><${act ? `button class="ov-row" data-act="${act}"` : 'div class="ov-row static"'} style="--d:${d}"><b${c ? ` style="--c:${c}"` : ''}>${v}</b><span>${label}<small>${sub}</small></span>${act ? '<em>Show</em>' : ''}</${act ? 'button' : 'div'}></li>`;
   el.innerHTML = `<div class="ov-inner">
     <div class="ov-head">
       <div>
