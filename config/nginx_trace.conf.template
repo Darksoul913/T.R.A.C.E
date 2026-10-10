@@ -1,19 +1,76 @@
-# Nginx configuration for T.R.A.C.E. Satellite Intelligence Platform
-# Place at /etc/nginx/sites-available/trace and symlink to /etc/nginx/sites-enabled/
+# ==============================================================================
+# 🛰️ High-Performance Nginx Reverse Proxy for T.R.A.C.E.
+# Port 80 (Public HTTP) -> Port 8765 (FastAPI / Uvicorn Server)
+# ==============================================================================
 
 server {
-    listen 80;
+    listen 80 default_server;
+    listen [::]:80 default_server;
     server_name _;
 
-    # Maximum upload size for large multi-band GeoTIFF satellite files
+    # Maximum upload size for large multi-band GeoTIFF satellite files (500 MB)
     client_max_body_size 500M;
+    client_body_buffer_size 128k;
 
-    # Gzip Compression
+    # Performance optimizations
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    # High-Performance Gzip Compression
     gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+    gzip_static on;             # Serves pre-compressed .gz assets (index.html.gz) directly from disk
+    gzip_proxied any;           # CRITICAL: Compresses proxied backend API responses from FastAPI!
+    gzip_vary on;
+    gzip_comp_level 6;          # Balanced high compression & CPU efficiency
+    gzip_min_length 256;
+    gzip_buffers 16 8k;
+    gzip_http_version 1.1;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/json
+        application/javascript
+        application/x-javascript
+        application/xml
+        application/xml+rss
+        image/svg+xml;
 
-    # Main Proxy Pass to T.R.A.C.E. FastAPI / Uvicorn Server
+    # Root directory pointing to web assets
+    root __REPO_PATH__/web;
+
+    # 1. Direct Static File Serving for pre-built assets (zero Python overhead)
+    location ~* \.(?:json|js|css|png|jpg|jpeg|gif|svg|ico|woff2?|gpkg|pdf)$ {
+        try_files $uri @backend;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, stale-while-revalidate=86400";
+        gzip_static on;
+    }
+
+    # 2. Main Entrypoint: serve pre-compressed index.html directly from disk
+    location = / {
+        try_files /index.html @backend;
+        add_header Cache-Control "public, max-age=3600, stale-while-revalidate=86400";
+        gzip_static on;
+    }
+
+    # 3. Static mount fallback
+    location /static/ {
+        alias __REPO_PATH__/web/;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800, stale-while-revalidate=86400";
+        gzip_static on;
+    }
+
+    # 4. All Dynamic API & WebSocket routes -> Proxied to FastAPI on 127.0.0.1:8765
     location / {
+        try_files $uri @backend;
+    }
+
+    location @backend {
         proxy_pass http://127.0.0.1:8765;
         proxy_http_version 1.1;
 
@@ -31,5 +88,11 @@ server {
         proxy_send_timeout 600s;
         proxy_read_timeout 600s;
         send_timeout 600s;
+
+        # Buffer tuning for large GeoTIFF uploads and API responses
+        proxy_buffering on;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
     }
 }

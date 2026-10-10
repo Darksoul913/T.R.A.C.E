@@ -367,6 +367,11 @@ else
     fi
 fi
 
+# Pre-compress frontend assets with gzip -9 for instant Nginx & browser delivery
+log_info "Pre-compressing frontend assets with gzip -9 for high-speed delivery..."
+gzip -kf -9 web/index.html 2>/dev/null || true
+gzip -kf -9 web/scenes.json 2>/dev/null || true
+
 # ------------------------------------------------------------------------------
 # 10. System Sanity Check
 # ------------------------------------------------------------------------------
@@ -418,10 +423,10 @@ log_success "Sanity check passed!"
 # ------------------------------------------------------------------------------
 # 11. Optional EC2 Production Configuration (Systemd & Nginx)
 # ------------------------------------------------------------------------------
-CURRENT_USER=$(id -un)
+CURRENT_USER="${SUDO_USER:-$(id -un)}"
 
 if [ "$INSTALL_SERVICE" = true ]; then
-    log_info "Configuring systemd service (trace.service)..."
+    log_info "Configuring systemd service with 5-second automatic crash restart..."
     SERVICE_FILE="/etc/systemd/system/trace.service"
 
     SUDO=""
@@ -434,6 +439,7 @@ if [ "$INSTALL_SERVICE" = true ]; then
 [Unit]
 Description=T.R.A.C.E. Bi-Temporal Satellite Change Intelligence Engine
 After=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -443,6 +449,9 @@ EnvironmentFile=-${SCRIPT_DIR}/.env
 ExecStart=${SCRIPT_DIR}/.venv/bin/uvicorn src.server.app:app --host 0.0.0.0 --port 8765 --workers 2
 Restart=always
 RestartSec=5
+RestartPreventExitStatus=
+KillMode=mixed
+TimeoutStopSec=10
 StandardOutput=journal
 StandardError=journal
 LimitNOFILE=65536
@@ -454,17 +463,19 @@ EOF
     if [ -n "$SUDO" ] || [ "$EUID" -eq 0 ]; then
         $SUDO cp "$TEMP_SERVICE" "$SERVICE_FILE"
         rm -f "$TEMP_SERVICE"
+        $SUDO chmod 644 "$SERVICE_FILE"
         $SUDO systemctl daemon-reload
         $SUDO systemctl enable trace.service
-        log_success "Installed and enabled systemd service: $SERVICE_FILE"
-        log_info "Start anytime with: sudo systemctl start trace"
+        $SUDO systemctl restart trace.service
+        log_success "Installed and enabled auto-restarting systemd service: $SERVICE_FILE"
+        log_info "Daemon status: sudo systemctl status trace"
     else
         log_warn "Root or sudo required to install systemd service. Template saved at config/trace.service.template."
     fi
 fi
 
 if [ "$INSTALL_NGINX" = true ]; then
-    log_info "Configuring Nginx reverse proxy..."
+    log_info "Configuring Nginx reverse proxy (Port 80 -> Port 8765)..."
     SUDO=""
     if [ "$EUID" -ne 0 ] && command -v sudo &>/dev/null; then
         SUDO="sudo"
@@ -480,18 +491,23 @@ if [ "$INSTALL_NGINX" = true ]; then
             fi
         fi
 
+        TEMP_NGINX=$(mktemp)
+        sed "s|__REPO_PATH__|${SCRIPT_DIR}|g" config/nginx_trace.conf.template > "$TEMP_NGINX"
+
         if [ -d "/etc/nginx/sites-available" ]; then
-            $SUDO cp config/nginx_trace.conf.template /etc/nginx/sites-available/trace
+            $SUDO cp "$TEMP_NGINX" /etc/nginx/sites-available/trace
             $SUDO ln -sf /etc/nginx/sites-available/trace /etc/nginx/sites-enabled/trace
             $SUDO rm -f /etc/nginx/sites-enabled/default
         elif [ -d "/etc/nginx/conf.d" ]; then
-            $SUDO cp config/nginx_trace.conf.template /etc/nginx/conf.d/trace.conf
+            $SUDO cp "$TEMP_NGINX" /etc/nginx/conf.d/trace.conf
+            $SUDO rm -f /etc/nginx/conf.d/default.conf
         fi
+        rm -f "$TEMP_NGINX"
 
-        if $SUDO nginx -t &>/dev/null; then
+        if $SUDO nginx -t; then
             $SUDO systemctl restart nginx
             $SUDO systemctl enable nginx
-            log_success "Nginx reverse proxy configured and restarted (Port 80 -> 8765)."
+            log_success "Nginx reverse proxy active: Port 80 forwards to Port 8765 with gzip_static enabled."
         else
             log_warn "Nginx configuration syntax check failed. Please review /etc/nginx/."
         fi

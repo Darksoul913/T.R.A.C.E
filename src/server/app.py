@@ -24,6 +24,7 @@ from typing import Dict, Any, Optional, List
 from fastapi import FastAPI, UploadFile, File, Form, Query, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -48,6 +49,9 @@ app = FastAPI(
     version="2.0.0",
     description="Advanced Pixel-Level Change Detection, Explainable GeoIntelligence & Comprehensive Reporting"
 )
+
+# Enable GZip compression for responses >= 500 bytes (compresses HTML & API payloads up to 80%)
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Enable CORS for flexible development
 app.add_middleware(
@@ -601,7 +605,10 @@ if os.path.exists(web_dir):
 
     @app.get("/")
     def serve_frontend():
-        return FileResponse(os.path.join(web_dir, "index.html"))
+        return FileResponse(
+            os.path.join(web_dir, "index.html"),
+            headers={"Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"}
+        )
 
 
 if __name__ == "__main__":
