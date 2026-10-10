@@ -57,15 +57,22 @@ server {
         gzip_static on;
     }
 
-    # 3. Static mount fallback
-    location /static/ {
+    # 3. Content-hashed build assets (images, data bundle, downloads): filenames change when content does
+    location ^~ /static/a/ {
+        alias __REPO_PATH__/web/a/;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        gzip_static on;
+    }
+
+    # 4. Static mount fallback (^~ so the extension regex above doesn't send it to FastAPI)
+    location ^~ /static/ {
         alias __REPO_PATH__/web/;
         expires 7d;
         add_header Cache-Control "public, max-age=604800, stale-while-revalidate=86400";
         gzip_static on;
     }
 
-    # 4. All Dynamic API & WebSocket routes -> Proxied to FastAPI on 127.0.0.1:8765
+    # 5. All Dynamic API & WebSocket routes -> Proxied to FastAPI on 127.0.0.1:8765
     location / {
         try_files $uri @backend;
     }
