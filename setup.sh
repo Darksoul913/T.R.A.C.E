@@ -353,16 +353,16 @@ fi
 if [ "$REBUILD_FRONTEND" = true ]; then
     log_info "Rebuilding frontend scenes and static bundles..."
     python scripts/build_scenes.py
-    python scripts/build_frontend_light.py
+    python scripts/build_full_app.py
     log_success "Frontend assets rebuilt."
 else
     if [ -f "web/index.html" ] && [ -f "web/scenes.json" ]; then
         INDEX_SIZE=$(wc -c < "web/index.html" 2>/dev/null || echo 0)
-        log_success "Frontend console ready in web/index.html (~$(( INDEX_SIZE / 1024 / 1024 )) MB self-contained)."
+        log_success "Frontend console ready in web/index.html (~$(( INDEX_SIZE / 1024 )) KB + web/a/ assets)."
     else
         log_warn "web/index.html or web/scenes.json missing. Building now..."
         python scripts/build_scenes.py
-        python scripts/build_frontend_light.py
+        python scripts/build_full_app.py
         log_success "Built web/index.html and web/scenes.json successfully."
     fi
 fi

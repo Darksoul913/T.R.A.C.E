@@ -16,13 +16,34 @@ import os
 import sys
 import json
 import base64
+import gzip
+import hashlib
 import pathlib
+import shutil
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-def b64(rel):
-    return base64.b64encode((ROOT / rel).read_bytes()).decode()
+# Images and downloads are written as content-hashed files under web/a/ instead of being base64-inlined,
+# so the browser fetches only what it shows (the inlined build was a 64 MB index.html).
+ASSETS = ROOT / 'web/a'
+ASSET_URL = '/static/a/'
+shutil.rmtree(ASSETS, ignore_errors=True)
+ASSETS.mkdir(parents=True)
+
+def emit(data, ext):
+    name = f"{hashlib.sha1(data).hexdigest()[:16]}.{ext}"
+    (ASSETS / name).write_bytes(data)
+    return ASSET_URL + name
+
+def externalise(o):
+    """Replace every base64 data: URI in the bundle with a URL to the same bytes on disk."""
+    if isinstance(o, dict): return {k: externalise(v) for k, v in o.items()}
+    if isinstance(o, list): return [externalise(v) for v in o]
+    if isinstance(o, str) and o.startswith('data:') and ';base64,' in o:
+        mime, b = o[5:].split(';base64,', 1)
+        return emit(base64.b64decode(b), mime.split('/')[-1].split('+')[0])
+    return o
 
 scenes = json.loads((ROOT / 'web/scenes.json').read_text())
 severity = scenes.pop('_severity', None)
@@ -30,17 +51,17 @@ OUT = 'data/outputs/'
 
 from src.exporters.cap_alert import EVENT_PROFILES
 
-DATA = {
+DATA = externalise({
     'scenes': scenes,
     'severity': severity,
     'profiles': EVENT_PROFILES,
     'benchmark': json.loads((ROOT / OUT / 'benchmark_metrics.json').read_text()),
     'stress': json.loads((ROOT / OUT / 'stress_test.json').read_text()) if (ROOT / OUT / 'stress_test.json').exists() else None,
-    'earth': 'data:image/jpeg;base64,' + b64('web/assets/earth_equirect.jpg'),
-    'files': {k: {'geojson': (ROOT / OUT / sc['files']['geojson']).read_text(),
-                  'gpkg': b64(OUT + sc['files']['gpkg']),
-                  'sitrep': b64(OUT + sc['files']['sitrep'])} for k, sc in scenes.items()},
-}
+    'earth': emit((ROOT / 'web/assets/earth_equirect.jpg').read_bytes(), 'jpg'),
+    'files': {k: {'geojson': emit((ROOT / OUT / sc['files']['geojson']).read_bytes(), 'json'),
+                  'gpkg': emit((ROOT / OUT / sc['files']['gpkg']).read_bytes(), 'gpkg'),
+                  'sitrep': emit((ROOT / OUT / sc['files']['sitrep']).read_bytes(), 'pdf')} for k, sc in scenes.items()},
+})
 
 # Read base template from scripts/build_frontend_light.py
 src_light = (ROOT / 'scripts/build_frontend_light.py').read_text(encoding='utf-8')
@@ -1182,9 +1203,29 @@ template = template.replace('/*__CASELOGIC__*/', caselogic, 1)
 assert '</script>\n\n<script>\n/* B) burger */' in template, "Burger script split not found in template!"
 template = template.replace('</script>\n\n<script>\n/* B) burger */', js_code_addition + '\n</script>\n\n<script>\n/* B) burger */', 1)
 
-# Compile index.html
+# Bundled downloads are now URLs, not base64 strings
+for old, new in [
+    ("download(D.files[S.th].geojson, `${S.th}_change_intelligence.geojson`, 'application/geo+json')",
+     "downloadFileFromUrl(D.files[S.th].geojson, `${S.th}_change_intelligence.geojson`)"),
+    ("download(bytes(D.files[S.th].gpkg), `${S.th}_change_intelligence.gpkg`, 'application/geopackage+sqlite3')",
+     "downloadFileFromUrl(D.files[S.th].gpkg, `${S.th}_change_intelligence.gpkg`)"),
+    ("download(bytes(D.files[S.th].sitrep), `TRACE_SitRep_${S.th}.pdf`, 'application/pdf')",
+     "downloadFileFromUrl(D.files[S.th].sitrep, `TRACE_SitRep_${S.th}.pdf`)"),
+]:
+    assert old in template, f"DL handler not found: {old[:40]}"
+    template = template.replace(old, new, 1)
+
+# Data bundle goes in its own cacheable, pre-gzipped script loaded just before the main script
+data_js = ('window.__D=' + json.dumps(DATA, ensure_ascii=False, separators=(',', ':')) + ';').encode()
+data_url = emit(data_js, 'js')
+(ASSETS / data_url.rsplit('/', 1)[1]).with_suffix('.js.gz').write_bytes(gzip.compress(data_js, 9))
+
 assert '/*__DATA__*/null' in template, "/*__DATA__*/null not found in template!"
-final_html = template.replace('/*__DATA__*/null', json.dumps(DATA, ensure_ascii=False).replace('</', '<\\/'))
+i = template.rfind('<script>', 0, template.find('/*__DATA__*/null'))
+final_html = template[:i] + f'<script src="{data_url}"></script>\n' + template[i:].replace('/*__DATA__*/null', 'window.__D', 1)
 out_path = ROOT / 'web/index.html'
 out_path.write_text(final_html, encoding='utf-8')
-print(f"Successfully compiled {out_path} ({len(final_html) / 1e6:.2f} MB)")
+# nginx gzip_static serves index.html.gz when present, so it must be rewritten with the page or it goes stale
+out_path.with_suffix('.html.gz').write_bytes(gzip.compress(final_html.encode(), 9))
+print(f"Successfully compiled {out_path} ({len(final_html) / 1e6:.2f} MB, data {len(data_js) / 1e6:.2f} MB, "
+      f"{len(list(ASSETS.iterdir()))} assets in {ASSETS})")
