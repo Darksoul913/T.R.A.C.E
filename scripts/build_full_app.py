@@ -1218,7 +1218,7 @@ for old, new in [
 # Data bundle goes in its own cacheable, pre-gzipped script loaded just before the main script
 data_js = ('window.__D=' + json.dumps(DATA, ensure_ascii=False, separators=(',', ':')) + ';').encode()
 data_url = emit(data_js, 'js')
-(ASSETS / data_url.rsplit('/', 1)[1]).with_suffix('.js.gz').write_bytes(gzip.compress(data_js, 9))
+(ASSETS / data_url.rsplit('/', 1)[1]).with_suffix('.js.gz').write_bytes(gzip.compress(data_js, 9, mtime=0))
 
 assert '/*__DATA__*/null' in template, "/*__DATA__*/null not found in template!"
 i = template.rfind('<script>', 0, template.find('/*__DATA__*/null'))
@@ -1226,6 +1226,6 @@ final_html = template[:i] + f'<script src="{data_url}"></script>\n' + template[i
 out_path = ROOT / 'web/index.html'
 out_path.write_text(final_html, encoding='utf-8')
 # nginx gzip_static serves index.html.gz when present, so it must be rewritten with the page or it goes stale
-out_path.with_suffix('.html.gz').write_bytes(gzip.compress(final_html.encode(), 9))
+out_path.with_suffix('.html.gz').write_bytes(gzip.compress(final_html.encode(), 9, mtime=0))
 print(f"Successfully compiled {out_path} ({len(final_html) / 1e6:.2f} MB, data {len(data_js) / 1e6:.2f} MB, "
       f"{len(list(ASSETS.iterdir()))} assets in {ASSETS})")

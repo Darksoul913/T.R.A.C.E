@@ -425,6 +425,10 @@ log_success "Sanity check passed!"
 # ------------------------------------------------------------------------------
 CURRENT_USER="${SUDO_USER:-$(id -un)}"
 
+# Behind Nginx the app only needs to listen on loopback (port 8765 stays private); without it, bind publicly.
+BIND_HOST="0.0.0.0"
+[ "$INSTALL_NGINX" = true ] && BIND_HOST="127.0.0.1"
+
 if [ "$INSTALL_SERVICE" = true ]; then
     log_info "Configuring systemd service with 5-second automatic crash restart..."
     SERVICE_FILE="/etc/systemd/system/trace.service"
@@ -446,7 +450,9 @@ Type=simple
 User=${CURRENT_USER}
 WorkingDirectory=${SCRIPT_DIR}
 EnvironmentFile=-${SCRIPT_DIR}/.env
-ExecStart=${SCRIPT_DIR}/.venv/bin/uvicorn src.server.app:app --host 0.0.0.0 --port 8765 --workers 2
+# One worker: upload/process/status share in-memory session state (_JOB_STATUS, _ACTIVE_SESSIONS), so
+# requests split across workers fail with "Session not found". Pipelines already run in background threads.
+ExecStart=${SCRIPT_DIR}/.venv/bin/uvicorn src.server.app:app --host ${BIND_HOST} --port 8765 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
 Restart=always
 RestartSec=5
 RestartPreventExitStatus=
@@ -501,13 +507,40 @@ if [ "$INSTALL_NGINX" = true ]; then
         elif [ -d "/etc/nginx/conf.d" ]; then
             $SUDO cp "$TEMP_NGINX" /etc/nginx/conf.d/trace.conf
             $SUDO rm -f /etc/nginx/conf.d/default.conf
+            # Amazon Linux / RHEL ship a port-80 default_server inside nginx.conf itself, which makes
+            # `nginx -t` fail with "duplicate default server". Drop that flag so trace.conf owns port 80.
+            $SUDO sed -i.bak -E 's/(listen[^;]*) default_server;/\1;/' /etc/nginx/nginx.conf
         fi
+        $SUDO chmod 644 /etc/nginx/sites-available/trace /etc/nginx/conf.d/trace.conf 2>/dev/null || true
         rm -f "$TEMP_NGINX"
 
+        # Nginx serves web/ straight from disk, but EC2 home dirs are 700/750, so the nginx user gets
+        # 403 on every static asset. Grant traverse (x) on each parent dir and read on web/ only.
+        D="$SCRIPT_DIR"
+        while [ "$D" != "/" ]; do $SUDO chmod o+x "$D"; D="$(dirname "$D")"; done
+        $SUDO chmod -R o+rX "$SCRIPT_DIR/web"
+
+        # SELinux (enforcing on RHEL): allow proxying to 8765 and reading web/ from a home directory
+        if command -v getenforce &>/dev/null && [ "$(getenforce)" = "Enforcing" ]; then
+            $SUDO setsebool -P httpd_can_network_connect 1
+            $SUDO chcon -R -t httpd_sys_content_t "$SCRIPT_DIR/web"
+        fi
+
         if $SUDO nginx -t; then
-            $SUDO systemctl restart nginx
             $SUDO systemctl enable nginx
-            log_success "Nginx reverse proxy active: Port 80 forwards to Port 8765 with gzip_static enabled."
+            $SUDO systemctl restart nginx
+            sleep 2
+            # Verify the whole path: page from disk, a hashed asset from disk, and an API call proxied to 8765
+            ASSET=$(ls web/a/*.jpeg 2>/dev/null | head -1)
+            for URL in "/" ${ASSET:+"/static/${ASSET#web/}"} "/api/health"; do
+                CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1${URL}" || echo 000)
+                if [ "$CODE" = "200" ]; then
+                    log_success "Port 80 ${URL} -> HTTP 200"
+                else
+                    log_warn "Port 80 ${URL} -> HTTP ${CODE} (logs: sudo tail /var/log/nginx/error.log; sudo journalctl -u trace -n 30)"
+                fi
+            done
+            log_success "Nginx reverse proxy active: Port 80 forwards to 127.0.0.1:8765 with gzip_static enabled."
         else
             log_warn "Nginx configuration syntax check failed. Please review /etc/nginx/."
         fi
@@ -526,7 +559,12 @@ echo -e "1. ${BOLD}Start the FastAPI Web & Intelligence Server:${NC}"
 echo -e "   source .venv/bin/activate"
 echo -e "   uvicorn src.server.app:app --host 0.0.0.0 --port 8765"
 echo -e "   ${GREEN}Or simply run:${NC} ./run_server.sh"
+if [ "$INSTALL_NGINX" = true ]; then
+echo -e "   ${BLUE}Access UI at:${NC} http://<YOUR_EC2_PUBLIC_IP>/ (Nginx on port 80; 8765 is loopback-only)"
+else
 echo -e "   ${BLUE}Access UI at:${NC} http://<YOUR_EC2_PUBLIC_IP>:8765 (or http://localhost:8765)"
+echo -e "   ${BLUE}Production:${NC} sudo ./setup.sh --install-service --install-nginx  (serves on port 80)"
+fi
 echo ""
 echo -e "2. ${BOLD}Run Alternative Streamlit GIS Console:${NC}"
 echo -e "   streamlit run web/app.py --server.port 8501 --server.address 0.0.0.0"

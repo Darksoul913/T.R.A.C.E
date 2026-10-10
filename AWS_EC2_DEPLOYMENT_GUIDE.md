@@ -84,7 +84,7 @@ T.R.A.C.E. combines dual deep-learning models (Track A Bitemporal Transformer fo
 | **SSH** | TCP | 22 | `My IP` (or `0.0.0.0/0`) | Secure Terminal Access |
 | **HTTP** | TCP | 80 | `0.0.0.0/0` | Public Web Console Access |
 | **HTTPS** | TCP | 443 | `0.0.0.0/0` | Secure SSL Web Access |
-| **Custom TCP** | TCP | 8765 | `0.0.0.0/0` | Direct FastAPI / Uvicorn Port |
+| **Custom TCP** | TCP | 8765 | `My IP` | Only needed without Nginx (with `--install-nginx` the app binds to 127.0.0.1) |
 | **Custom TCP** | TCP | 8501 | `0.0.0.0/0` | Streamlit GIS Console Port |
 
 4. Click **Launch Instance**.
@@ -244,7 +244,8 @@ T.R.A.C.E. provides two interfaces:
 ## 6. Troubleshooting & FAQs
 
 ### Q: Port 8765 or Port 80 is not reachable from my browser.
-- Verify your EC2 **Security Group** inbound rules. Ensure Port 80, 443, and 8765 have `0.0.0.0/0` allowed.
+- Verify your EC2 **Security Group** inbound rules. Ensure Port 80 (and 443) have `0.0.0.0/0` allowed. With Nginx installed, 8765 listens on 127.0.0.1 only, so use port 80.
+- Static assets returning 403: re-run `sudo ./setup.sh --install-nginx` (it grants nginx read access to `web/`). Check `sudo tail /var/log/nginx/error.log`.
 - Verify the server is running: `curl http://localhost:8765/` or `sudo systemctl status trace`.
 
 ### Q: Uploading large GeoTIFF files returns "413 Request Entity Too Large".
