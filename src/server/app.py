@@ -602,3 +602,11 @@ if os.path.exists(web_dir):
     @app.get("/")
     def serve_frontend():
         return FileResponse(os.path.join(web_dir, "index.html"))
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8765))
+    host = os.environ.get("HOST", "0.0.0.0")
+    print(f"Starting T.R.A.C.E. server on http://{host}:{port}")
+    uvicorn.run("src.server.app:app", host=host, port=port, reload=False)

@@ -1,0 +1,18 @@
+[Unit]
+Description=T.R.A.C.E. Bi-Temporal Satellite Change Intelligence Engine
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/HFD
+EnvironmentFile=-/home/ubuntu/HFD/.env
+ExecStart=/home/ubuntu/HFD/.venv/bin/uvicorn src.server.app:app --host 0.0.0.0 --port 8765 --workers 2
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
