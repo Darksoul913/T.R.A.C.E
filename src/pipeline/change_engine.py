@@ -151,7 +151,7 @@ class RasterInspector:
                     # Band naming heuristic
                     band_names = []
                     if bands >= 6:
-                        band_names = ["B02 Blue", "B03 Green", "B04 Red", "B08 NIR", "B11 SWIR1", "B12 SWIR2"]
+                        band_names = ["B04 Red", "B03 Green", "B02 Blue", "B08 NIR", "B11 SWIR1", "B12 SWIR2"]
                     elif bands == 4:
                         band_names = ["B04 Red", "B03 Green", "B02 Blue", "B08 NIR"]
                     elif bands == 3:
@@ -446,7 +446,8 @@ class ChangeEngine:
         elif model_choice == "event_flood" or ("flood" in t1_path.lower() and model_choice == "auto"):
             prob_map = events.SCORERS["flood"](final_t1, final_t2)
             detector_name = "Copernicus EMS Flood Inundation Detector (MNDWI > 0)"
-        elif model_choice == "track_b" or (final_t1.shape[0] >= 6 and model_choice == "auto" and "mumbai" in t1_path.lower()):
+        # 6-band input is Sentinel-2 reflectance (B04 B03 B02 B08 B11 B12): BIT is trained on RGB aerial imagery
+        elif model_choice == "track_b" or (final_t1.shape[0] >= 6 and model_choice == "auto"):
             from src.models import track_b
             tb_prob = track_b.change_probability(final_t1, final_t2)
             if tb_prob is not None:
